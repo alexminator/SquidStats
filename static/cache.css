@@ -1,11 +1,13 @@
-/* Containers Stats*/
+/* Containers Stats */
 .stats-container {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
     flex-wrap: wrap;
     justify-content: center;
     gap: 20px;
     max-width: 1100px;
     margin: 0 auto;
+    padding: 0; /* Asegúrate de que no haya padding adicional */
 }
 
 /* Styles for cards */
@@ -13,68 +15,74 @@
     background: #ffffff;
     border-radius: 10px;
     padding: 20px;
-    width: calc(25% - 20px);  /* 4 tarjetas por fila */
+    width: calc(25% - 15px);  /* Ajusta el margen para compensar el gap */
     text-align: center;
     box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
     transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+    margin: 0; /* Elimina márgenes adicionales */
+    box-sizing: border-box; /* Incluye padding y border en el cálculo del ancho */
 }
 
 .card:hover {
     transform: translateY(-5px);
-    box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0px 6px 12px rgba(34, 114, 255, 0.3);
 }
 
 /* Iconos */
 .card i {
     font-size: 32px;
-    color: #007bff;
+    color: #00ABE4; /* color acento para iconos */
     margin-bottom: 10px;
 }
 
+/* Título */
 .card h3 {
     font-size: 18px;
-    color: #495057;
+    color: #2272FF; /* azul fuerte para títulos */
     margin-bottom: 8px;
 }
 
+/* Valor o texto principal */
 .card p {
     font-size: 22px;
     font-weight: bold;
-    color: #212529;
+    color: #00ABE4; /* valor destacado */
 }
 
+/* Leyenda debajo de las tarjetas */
 .cache-legend {
     margin-top: 20px;
     padding: 15px;
-    background: #ffffff;
+    background: #FFFFFF;
     border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 6px rgba(0, 171, 228, 0.1);
 }
+
 .cache-legend h3 {
-    color: #333;
+    color: #2272FF;
     margin-bottom: 10px;
 }
+
 .cache-legend p {
     font-size: 14px;
     color: #555;
     margin-bottom: 8px;
 }
 
-/* Responsive */
 @media (max-width: 1024px) {
     .card {
-        width: calc(33.33% - 20px);
+        width: calc((100% - 40px) / 3);
     }
 }
-
 @media (max-width: 768px) {
     .card {
-        width: calc(50% - 20px);
+        width: calc((100% - 20px) / 2);
     }
 }
-
 @media (max-width: 480px) {
     .card {
         width: 100%;
     }
 }
+
+

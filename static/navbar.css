@@ -1,6 +1,6 @@
 /* Styles General of Navbar */
 .navbar {
-    background: linear-gradient(135deg, #1f1f1f, #3a3a3a);
+    background: linear-gradient(135deg, #00ABE4, #2272FF); /* Azul brillante a azul neón */
     padding: 15px 0;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
@@ -17,7 +17,7 @@
 
 /* Style for links */
 .navbar-menu li a {
-    color: #ffffff;
+    color: #FFFFFF; /* Blanco */
     text-decoration: none;
     font-size: 18px;
     font-weight: 600;
@@ -36,7 +36,8 @@
 
 /* Effect hover */
 .navbar-menu li a:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: #E9F1FA; /* Azul claro */
+    color: #2272FF;      /* Azul neón para contraste */
     transform: translateY(-2px);
 }
 

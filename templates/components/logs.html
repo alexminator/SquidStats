@@ -117,7 +117,6 @@
         {% endfor %}
     </div>
 
-
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const searchInput = document.getElementById("username-search");
@@ -128,98 +127,104 @@
         const prevBtn = document.getElementById("prev-page");
         const nextBtn = document.getElementById("next-page");
         const pageNumbers = document.getElementById("page-numbers");
-        const overlay = document.getElementById('overlay');
+        const dateFilter = document.getElementById("date-filter");
 
         let currentPage = 1;
         const itemsPerPage = 12;
-        const dateFilter = document.getElementById('date-filter');
 
-        dateFilter.addEventListener('change', async (e) => {
+        // 🔹 Siempre configurar el input con la fecha actual al cargar
+        const today = new Date().toISOString().split('T')[0];
+        if (!dateFilter.value) {
+            dateFilter.value = today;
+        }
+
+        dateFilter.addEventListener("change", async (e) => {
             const selectedDate = e.target.value;
             if (!selectedDate) return;
 
             try {
-                const response = await fetch('/get-logs-by-date', {
-                    method: 'POST',
+                const response = await fetch("/get-logs-by-date", {
+                    method: "POST",
                     headers: {
-                        'Content-Type': 'application/json',
+                        "Content-Type": "application/json",
                     },
                     body: JSON.stringify({ date: selectedDate }),
                 });
 
-                if (!response.ok) throw new Error('Error fetching data');
+                if (!response.ok) throw new Error("Error fetching data");
 
                 const usersData = await response.json();
                 updateUsersData(usersData);
             } catch (error) {
-                console.error('Error:', error);
-                alert('Error al cargar los datos');
+                console.error("Error:", error);
+                alert("Error al cargar los datos");
             }
         });
 
-        function updateUsersData(usersData) {
-            const usersContainer = document.getElementById('users-container');
-
-            const cardsHTML = usersData.map(user => `
+    function updateUsersData(usersData) {
+    const cardsHTML = usersData.map((user, index) => `
         <div class="user-card" data-username="${user.username.toLowerCase()}">
             <div class="user-header">
-                <div class="avatar">${user.username.charAt(0).toUpperCase()}</div>
-                <div class="user-info">
-                    <h3 class="username">${user.username}</h3>
-                    <span class="ip-address">${user.ip}</span>
+                <div class="user-header-left">
+                    <div class="avatar">${user.username.charAt(0).toUpperCase()}</div>
+                    <div class="user-info">
+                        <h3 class="username">${user.username}</h3>
+                        <span class="ip-address">${user.ip}</span>
+                    </div>
+                    <button class="activity-button" onclick="event.stopPropagation(); openLogsModal(${index})">Actividad</button>
                 </div>
-                <div class="stats-badge">
-                    <span class="requests">${user.total_requests} reqs</span>
-                    <span class="data">${formatBytes(user.total_data)}</span>
+                <div class="user-header-right">
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Requests</span>
+                            <span class="metric-value">${user.total_requests}</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Data</span>
+                            <span class="metric-value">${formatBytes(user.total_data)}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
+        </div>
 
-            <div class="metrics">
-                <div class="metric">
-                    <span class="metric-label">Requests</span>
-                    <span class="metric-value">${user.total_requests}</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Data</span>
-                    <span class="metric-value">${formatBytes(user.total_data)}</span>
-                </div>
-            </div>
-
-            <div class="logs-section">
-                <h4 class="logs-title">Recent Activity</h4>
+        <div class="logs-modal" id="logs-modal-${index}">
+            <div class="modal-content">
+                <span class="close-modal" onclick="closeLogsModal(${index})">&times;</span>
+                <h4 class="logs-title">Actividad reciente - <span class="username-highlight">${user.username}</span></h4>
                 <div class="logs-list">
-                    ${user.logs.length > 0 ?
-                    user.logs.map(log => `
-                            <div class="log-entry">
-                                <div class="log-url">${truncate(log.url, 40)}</div>
-                                <div class="log-details">
-                                    <span class="response-badge response-${log.response}">${log.response}</span>
-                                    <span class="log-meta">${log.request_count} reqs</span>
-                                    <span class="log-meta">${formatBytes(log.data_transmitted)}</span>
-                                </div>
+                    ${user.logs.length > 0 ? user.logs.map(log => `
+                        <div class="log-entry">
+                            <div class="log-url">${truncate(log.url, 40)}</div>
+                            <div class="log-details">
+                                <span class="response-badge response-${log.response}">${log.response}</span>
+                                <span class="log-meta">${log.request_count} reqs</span>
+                                <span class="log-meta">${formatBytes(log.data_transmitted)}</span>
                             </div>
-                        `).join('') :
-                    '<div class="no-logs">No activity recorded</div>'}
+                        </div>
+                    `).join('') : '<div class="no-logs">No hay actividad registrada</div>'}
                 </div>
             </div>
         </div>
     `).join('');
 
-            usersContainer.innerHTML = cardsHTML;
+    usersContainer.innerHTML = cardsHTML;
 
-            userCards = Array.from(document.querySelectorAll(".user-card"));
-            filteredUsers = [...userCards];
+    userCards = Array.from(document.querySelectorAll(".user-card"));
+    filteredUsers = [...userCards];
 
-            renderPage(1);
-            initializeCardInteractions();
-        }
+    renderPage(1);
+    filterUsers();
+    applyCardInteractions();
+}
+
 
         function truncate(str, n) {
-            return str.length > n ? str.slice(0, n - 1) + '...' : str;
+            return str.length > n ? str.slice(0, n - 1) + "..." : str;
         }
 
         function formatBytes(bytes) {
-            const units = ['B', 'KB', 'MB', 'GB'];
+            const units = ["B", "KB", "MB", "GB"];
             let value = bytes;
             let unitIndex = 0;
 
@@ -231,67 +236,22 @@
             return `${value.toFixed(2)} ${units[unitIndex]}`;
         }
 
-        function initializeCardInteractions() {
-            document.querySelectorAll('.user-card').forEach(card => {
-                card.addEventListener('click', (e) => {
-                    if (!card.classList.contains('expanded')) {
-                        expandCard(card);
-                    }
-                });
-            });
-        }
-
-        function expandCard(card) {
-            if (card.classList.contains('expanded')) return;
-
-            document.querySelectorAll('.user-card.expanded').forEach(expandedCard => {
-                expandedCard.classList.remove('expanded');
-            });
-
-            card.classList.add('expanded');
-            overlay.style.display = 'block';
-            document.body.style.overflow = 'hidden';
-        }
-
-        function collapseCards() {
-            document.querySelectorAll('.user-card.expanded').forEach(card => {
-                card.classList.remove('expanded');
-            });
-            overlay.style.display = 'none';
-            document.body.style.overflow = 'auto';
-        }
-
-        document.querySelectorAll('.user-card').forEach(card => {
-            card.addEventListener('click', (e) => {
-                if (!card.classList.contains('expanded')) {
-                    expandCard(card);
-                }
-            });
-        });
-
-        overlay.addEventListener('click', collapseCards);
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') collapseCards();
-        });
-
         function renderPage(page = 1) {
             const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
             currentPage = Math.min(Math.max(1, page), totalPages);
 
-            userCards.forEach(card => card.style.display = "none");
+            userCards.forEach(card => (card.style.display = "none"));
 
             const start = (currentPage - 1) * itemsPerPage;
             const end = start + itemsPerPage;
             const pageItems = filteredUsers.slice(start, end);
 
-            pageItems.forEach(card => card.style.display = "");
+            pageItems.forEach(card => (card.style.display = ""));
 
             prevBtn.disabled = currentPage === 1;
             nextBtn.disabled = currentPage === totalPages;
 
             pageNumbers.innerHTML = `Page ${currentPage} of ${totalPages}`;
-            collapseCards();
         }
 
         function filterUsers() {
@@ -308,14 +268,45 @@
         nextBtn.addEventListener("click", () => renderPage(currentPage + 1));
 
         renderPage(1);
+
+        // Carga datos iniciales para la fecha actual
+        dateFilter.dispatchEvent(new Event("change"));
     });
 
+    function applyCardInteractions() {
+    // Ejemplo: si las tarjetas tienen un botón para expandirse
+    const cards = document.querySelectorAll('.user-card');
+
+    cards.forEach(card => {
+        const header = card.querySelector('.user-header');
+        if (header) {
+            header.addEventListener('click', () => {
+                card.classList.toggle('expanded'); // o la clase que use tu CSS
+            });
+        }
+
+        // Si hay modales dentro de la tarjeta
+        const openBtn = card.querySelector('[data-open-modal]');
+        const closeBtn = card.querySelector('[data-close-modal]');
+        const modal = card.querySelector('.modal');
+
+        if (openBtn && modal) {
+            openBtn.addEventListener('click', () => modal.classList.add('active'));
+        }
+
+        if (closeBtn && modal) {
+            closeBtn.addEventListener('click', () => modal.classList.remove('active'));
+        }
+    });
+}
+
+
     function openLogsModal(index) {
-    document.getElementById(`logs-modal-${index}`).classList.add('active');
-}
+        document.getElementById(`logs-modal-${index}`).classList.add("active");
+    }
 
-function closeLogsModal(index) {
-    document.getElementById(`logs-modal-${index}`).classList.remove('active');
-}
-
+    function closeLogsModal(index) {
+        document.getElementById(`logs-modal-${index}`).classList.remove("active");
+    }
 </script>
+
