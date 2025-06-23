@@ -72,7 +72,7 @@ parent_proxy_lock = Lock()
 # Detección del proxy padre una sola vez al iniciar
 log_file_path = os.getenv("SQUID_LOG", "/var/log/squid/access.log")
 logger.info("Realizando detección inicial del proxy padre...")
-g_parent_proxy_ip = find_last_parent_proxy(log_file_path) # La detección se hace aquí
+g_parent_proxy_ip = find_last_parent_proxy(log_file_path)
 if g_parent_proxy_ip:
     logger.info(f"Proxy padre detectado con IP: {g_parent_proxy_ip}. Esta configuración se mantendrá fija.")
 else:

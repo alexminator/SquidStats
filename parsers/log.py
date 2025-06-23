@@ -76,7 +76,11 @@ def parse_log_line_pipe_format(line):
         if username == '-' or "TCP_DENIED" in parts[13] or method not in ("GET", "CONNECT", "POST"):
             return None
 
+        # --- Lógica de Detección ---
+        # El código de jerarquía (ej. TCP_TUNNEL/HIER_DIRECT) está en la posición 13
         hierarchy = parts[13]
+        # Si la jerarquía contiene "PARENT", la IP del padre está en la posición 11.
+        # Si no (como en HIER_DIRECT), parent_ip será None.
         parent_ip = parts[11] if "PARENT" in hierarchy else None
 
         return {
@@ -108,7 +112,6 @@ def parse_log_line_space_format(line):
         logger.warning(f"Error parseando línea space: {line.strip()} - {e}")
         return None
 
-# --- MODIFICADO: Se ajusta el número de líneas a revisar por defecto ---
 def find_last_parent_proxy(log_file: str, lines_to_check: int = 5000) -> str | None:
     """
     Lee las últimas N líneas de un fichero de log para detectar la configuración
