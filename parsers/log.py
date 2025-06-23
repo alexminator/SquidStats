@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import logging
 import time
 import os
+from collections import deque
 
 current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
@@ -74,9 +75,15 @@ def parse_log_line_pipe_format(line):
         method = parts[5]
         if username == '-' or "TCP_DENIED" in parts[13] or method not in ("GET", "CONNECT", "POST"):
             return None
+
+        hierarchy = parts[13]
+        parent_ip = parts[11] if "PARENT" in hierarchy else None
+
         return {
             'ip': parts[1], 'username': username, 'url': parts[6],
-            'response': int(parts[8]), 'data_transmitted': int(parts[9])
+            'response': int(parts[8]), 'data_transmitted': int(parts[9]),
+            'parent_ip': parent_ip,
+            'hierarchy': hierarchy
         }
     except (ValueError, IndexError) as e:
         logger.warning(f"Error parseando línea pipe: {line.strip()} - {e}")
@@ -87,13 +94,59 @@ def parse_log_line_space_format(line):
         parts = line.split()
         if len(parts) < 10 or parts[7] == '-' or "TCP_DENIED" in line:
             return None
+        
+        hierarchy = parts[9]
+        parent_ip = None
+
         return {
             'ip': parts[2], 'username': parts[7], 'url': parts[6],
-            'response': int(parts[8]), 'data_transmitted': int(parts[4])
+            'response': int(parts[8]), 'data_transmitted': int(parts[4]),
+            'parent_ip': parent_ip,
+            'hierarchy': hierarchy
         }
     except (IndexError, ValueError) as e:
         logger.warning(f"Error parseando línea space: {line.strip()} - {e}")
         return None
+
+# --- MODIFICADO: Se ajusta el número de líneas a revisar por defecto ---
+def find_last_parent_proxy(log_file: str, lines_to_check: int = 5000) -> str | None:
+    """
+    Lee las últimas N líneas de un fichero de log para detectar la configuración
+    de proxy padre. Dado que se usa al arrancar, se revisa un bloque más grande.
+    """
+    if not os.path.exists(log_file):
+        return None
+    
+    try:
+        with open(log_file, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            buffer = bytearray()
+            end_pos = f.tell()
+            line_count = 0
+            while line_count < lines_to_check + 1 and f.tell() > 0:
+                try:
+                    f.seek(-1, os.SEEK_CUR)
+                    char = f.read(1)
+                    if char == b'\n':
+                        line_count += 1
+                    f.seek(-1, os.SEEK_CUR)
+                except OSError:
+                    f.seek(0)
+                    break
+
+            last_lines_raw = f.read(end_pos - f.tell())
+        
+        last_lines = last_lines_raw.decode('utf-8', errors='replace').strip().splitlines()
+
+        for line in reversed(last_lines):
+            log_data = parse_log_line(line)
+            if log_data and log_data.get('parent_ip'):
+                return log_data['parent_ip']
+                
+    except Exception as e:
+        logger.error(f"Error leyendo las últimas líneas del log: {e}", exc_info=False)
+
+    return None
 
 
 def process_logs(log_file):

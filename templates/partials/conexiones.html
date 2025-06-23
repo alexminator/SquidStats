@@ -1,4 +1,6 @@
-{# Bloque de filtrado (sin cambios) #}
+{# Este fichero es una plantilla parcial que se carga en la página principal. #}
+
+{# Bloque para filtrar usuarios no válidos o anónimos #}
 {% set valid_users = {} %}
 {% for user, user_data in grouped_connections.items() %}
     {% if user and user != "-" and user != "Anónimo" %}
@@ -8,9 +10,47 @@
 
 <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
 
-    {# Tarjetas de estadísticas (sin cambios) #}
+    {# Tarjetas de estadísticas #}
     <div class="flex justify-center mb-8">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-2xl">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-6xl">
+            
+            {# --- MODIFICADO: Tarjeta de información del Servidor Squid --- #}
+            <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center mr-4 flex-shrink-0">
+                    <i class="fas fa-server text-indigo-500 text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-gray-500 text-sm">Servidor Squid (v{{ squid_version }})</p>
+                    <p class="text-2xl font-bold">{{ squid_ip }}</p>
+                </div>
+            </div>
+            
+            {# --- MODIFICADO: Tarjeta de estado del Proxy Padre --- #}
+            {% if parent_proxy_ip %}
+            {# Estado Con Padre #}
+            <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
+                <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mr-4 flex-shrink-0">
+                    <i class="fas fa-sitemap text-green-500 text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-gray-500 text-sm">Proxy Padre Activo</p>
+                    <p class="text-2xl font-bold">{{ parent_proxy_ip }}</p>
+                </div>
+            </div>
+            {% else %}
+            {# Estado Sin Padre #}
+            <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
+                <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mr-4 flex-shrink-0">
+                    <i class="fas fa-plug-circle-xmark text-gray-500 text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-gray-500 text-sm">Sin Proxy Padre</p>
+                    <p class="text-2xl font-bold">Conexión Directa</p>
+                </div>
+            </div>
+            {% endif %}
+
+            {# Tarjeta de Usuarios Activos #}
             <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
                 <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mr-4 flex-shrink-0">
                     <i class="fas fa-users text-blue-500 text-xl"></i>
@@ -20,6 +60,8 @@
                     <p class="text-2xl font-bold">{{ valid_users|length }}</p>
                 </div>
             </div>
+
+            {# Tarjeta de Conexiones Totales #}
             <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
                 <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mr-4 flex-shrink-0">
                     <i class="fas fa-exchange-alt text-green-500 text-xl"></i>
@@ -38,11 +80,13 @@
         </div>
     </div>
 
+    {% if valid_users|length > 0 %}
     <div class="flex justify-end mb-4">
         <button id="toggle-all-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
             Ver Resumen
         </button>
     </div>
+    {% endif %}
 
     <div id="user-accordion-group">
     {% for user, user_data in valid_users.items() %}
@@ -53,8 +97,6 @@
     <div class="user-accordion bg-white rounded-lg shadow-md mb-3 overflow-hidden">
         <div class="w-full text-left p-4 border-b bg-white">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                {# --- LADO IZQUIERDO (MODIFICADO) --- #}
-                {# Se ha eliminado la IP de este bloque. Ahora solo muestra el ícono y el nombre de usuario. #}
                 <div class="flex items-center mb-3 sm:mb-0">
                     <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3 flex-shrink-0">
                         <i class="fas fa-user text-blue-600"></i>
@@ -64,8 +106,6 @@
                     </div>
                 </div>
                 
-                {# --- LADO DERECHO (MODIFICADO) --- #}
-                {# Se ha movido la IP del cliente a este bloque, como primer elemento. #}
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                     
                     <div class="flex items-center text-sm text-gray-600" title="IP del Cliente">
@@ -103,13 +143,13 @@
             </div>
         </div>
         
-        {# Tabla de conexiones (sin cambios en la estructura interna) #}
         <div data-accordion-content>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tiempo</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Hora</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Duración</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Método</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Datos</th>
@@ -121,9 +161,12 @@
                     <tbody class="divide-y divide-gray-200">
                         {% for connection in connections %}
                         <tr class="transition-colors duration-200 ease-in-out hover:bg-gray-50">
-                            <td class="px-4 py-3 whitespace-nowrap text-sm">
+                            <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {{ connection.start|fromtimestamp }}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                                 {% set seconds = connection.elapsed_time|float %}
-                                {% if seconds >= 3600 %}{{ "%.2f"|format(seconds/3600) }} horas
+                                {% if seconds >= 3600 %}{{ "%.2f"|format(seconds/3600) }} h
                                 {% elif seconds >= 60 %}{{ "%.2f"|format(seconds/60) }} min
                                 {% else %}{{ "%.2f"|format(seconds) }} seg{% endif %}
                             </td>

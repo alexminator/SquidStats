@@ -12,7 +12,7 @@ from database.database import create_dynamic_tables, get_engine, get_session, ge
 from parsers.connections import parse_raw_data, group_by_user
 from services.fetch_data import fetch_squid_data
 from parsers.cache import fetch_squid_cache_stats
-from parsers.log import process_logs
+from parsers.log import process_logs, find_last_parent_proxy
 from services.fetch_data_logs import get_users_logs, get_users_with_logs_by_date
 from services.blacklist_users import find_blacklisted_sites, find_blacklisted_sites_by_date
 from services.system_info import (
@@ -62,11 +62,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ======================================================================
-# Variables globales para datos en tiempo real
+# Variables globales y configuración inicial
 # ======================================================================
 realtime_data_lock = Lock()
 realtime_cache_stats = {}
 realtime_system_info = {}
+parent_proxy_lock = Lock()
+
+# Detección del proxy padre una sola vez al iniciar
+log_file_path = os.getenv("SQUID_LOG", "/var/log/squid/access.log")
+logger.info("Realizando detección inicial del proxy padre...")
+g_parent_proxy_ip = find_last_parent_proxy(log_file_path) # La detección se hace aquí
+if g_parent_proxy_ip:
+    logger.info(f"Proxy padre detectado con IP: {g_parent_proxy_ip}. Esta configuración se mantendrá fija.")
+else:
+    logger.info("No se detectó un proxy padre en los logs recientes. Asumiendo conexión directa.")
 
 # ======================================================================
 # Hilo para actualización periódica de datos
@@ -148,9 +158,21 @@ def index():
         connections = parse_raw_data(raw_data)
         grouped_connections = group_by_user(connections)
 
+        with parent_proxy_lock:
+            parent_ip = g_parent_proxy_ip
+
+        squid_version = get_squid_version()
+        network_info = get_network_info()
+        squid_ip = "No disponible"
+        if isinstance(network_info, list) and network_info:
+            squid_ip = network_info[0].get('ip', 'No disponible')
+        
         return render_template(
             'index.html',
             grouped_connections=grouped_connections,
+            parent_proxy_ip=parent_ip,
+            squid_ip=squid_ip,
+            squid_version=squid_version,
             page_icon='favicon.ico',
             page_title='Inicio Dashboard'
         )
@@ -169,7 +191,23 @@ def actualizar_conexiones():
 
         connections = parse_raw_data(raw_data)
         grouped_connections = group_by_user(connections)
-        return render_template('partials/conexiones.html', grouped_connections=grouped_connections)
+
+        with parent_proxy_lock:
+            parent_ip = g_parent_proxy_ip
+            
+        squid_version = get_squid_version()
+        network_info = get_network_info()
+        squid_ip = "No disponible"
+        if isinstance(network_info, list) and network_info:
+            squid_ip = network_info[0].get('ip', 'No disponible')
+            
+        return render_template(
+            'partials/conexiones.html', 
+            grouped_connections=grouped_connections, 
+            parent_proxy_ip=parent_ip,
+            squid_ip=squid_ip,
+            squid_version=squid_version
+        )
     except Exception as e:
         logger.error(f"Unexpected error in /actualizar-conexiones route: {str(e)}")
         return "Error interno", 500
@@ -270,7 +308,7 @@ def get_logs_by_date():
 
         db = get_session()
         users_data = get_users_logs(db, date_suffix, page=page, per_page=per_page)
-        return jsonify(users_data["users"]) # Devuelve solo la lista de usuarios como antes
+        return jsonify(users_data["users"])
     except ValueError:
         return jsonify({'error': 'Formato de fecha inválido'}), 400
     except Exception as e:
@@ -353,7 +391,7 @@ def init_scheduler():
         return
     process_logs(log_file)
 
-# ------------------- FILTRO DE FORMATO DE BYTES PARA TEMPLATES -------------------
+# ------------------- FILTROS DE PLANTILLA -------------------
 @app.template_filter('format_bytes')
 def format_bytes_filter(value):
     value = int(value)
@@ -365,7 +403,6 @@ def format_bytes_filter(value):
         return f"{(value / 1024):.2f} KB"
     return f"{value} bytes"
 
-# ------------------- FILTRO DE DIVISIÓN SEGURA -------------------
 @app.template_filter('divide')
 def divide_filter(numerator, denominator, precision=2):
     try:
@@ -378,6 +415,13 @@ def divide_filter(numerator, denominator, precision=2):
     except (TypeError, ValueError) as e:
         logger.error(f"Error en filtro divide: {str(e)}")
         return 0.0
+    
+@app.template_filter('fromtimestamp')
+def fromtimestamp_filter(s):
+    try:
+        return datetime.fromtimestamp(float(s)).strftime('%H:%M:%S')
+    except (ValueError, TypeError):
+        return s
     
 def create_tables():
     engine = get_engine()
