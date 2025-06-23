@@ -1,7 +1,8 @@
+{# Bloque de filtrado (sin cambios) #}
 {% set valid_users = {} %}
-{% for user, connections in grouped_connections.items() %}
+{% for user, user_data in grouped_connections.items() %}
     {% if user and user != "-" and user != "Anónimo" %}
-        {% set _ = valid_users.update({user: connections}) %}
+        {% set _ = valid_users.update({user: user_data}) %}
     {% endif %}
 {% endfor %}
 
@@ -19,7 +20,6 @@
                     <p class="text-2xl font-bold">{{ valid_users|length }}</p>
                 </div>
             </div>
-            
             <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
                 <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mr-4 flex-shrink-0">
                     <i class="fas fa-exchange-alt text-green-500 text-xl"></i>
@@ -28,8 +28,8 @@
                     <p class="text-gray-500 text-sm">Conexiones Totales</p>
                     <p class="text-2xl font-bold">
                         {% set total = namespace(value=0) %}
-                        {% for connections in valid_users.values() %}
-                            {% set total.value = total.value + connections|length %}
+                        {% for user_data in valid_users.values() %}
+                            {% set total.value = total.value + user_data.connections|length %}
                         {% endfor %}
                         {{ total.value }}
                     </p>
@@ -38,29 +38,41 @@
         </div>
     </div>
 
-    {# Botón para cambiar a la vista de Resumen #}
     <div class="flex justify-end mb-4">
         <button id="toggle-all-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
             Ver Resumen
         </button>
     </div>
 
-    {# Lista de usuarios (ya no es un acordeón) #}
     <div id="user-accordion-group">
-    {% for user, connections in valid_users.items() %}
+    {% for user, user_data in valid_users.items() %}
+    
+    {% set connections = user_data.connections %}
+    {% set client_ip = user_data.client_ip %}
+
     <div class="user-accordion bg-white rounded-lg shadow-md mb-3 overflow-hidden">
-        {# Encabezado de usuario (ya no es un botón para desplegar) #}
         <div class="w-full text-left p-4 border-b bg-white">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                {# --- LADO IZQUIERDO (MODIFICADO) --- #}
+                {# Se ha eliminado la IP de este bloque. Ahora solo muestra el ícono y el nombre de usuario. #}
                 <div class="flex items-center mb-3 sm:mb-0">
                     <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3 flex-shrink-0">
                         <i class="fas fa-user text-blue-600"></i>
                     </div>
-                    <h2 class="text-lg font-bold text-gray-800">{{ user }}</h2>
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800">{{ user }}</h2>
+                    </div>
                 </div>
                 
+                {# --- LADO DERECHO (MODIFICADO) --- #}
+                {# Se ha movido la IP del cliente a este bloque, como primer elemento. #}
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    {# ... Estadísticas del usuario (sin cambios) ... #}
+                    
+                    <div class="flex items-center text-sm text-gray-600" title="IP del Cliente">
+                        <i class="fas fa-network-wired mr-1.5 text-gray-500"></i>
+                        <span>{{ client_ip }}</span>
+                    </div>
+
                     <div class="flex items-center text-sm text-gray-600" title="Conexiones totales de este usuario">
                         <i class="fas fa-link mr-1.5 text-blue-500"></i>
                         <span>{{ connections|length }} conexiones</span>
@@ -85,18 +97,16 @@
                         <span>{{ total_requests.value }} solicitudes</span>
                     </div>
                     <div class="w-6 text-center">
-                        {# Icono ahora apunta hacia arriba por defecto (abierto) #}
                         <i class="fas fa-chevron-down transition-transform duration-300 rotate-180"></i>
                     </div>
                 </div>
             </div>
         </div>
         
-        {# Contenido (tabla de conexiones) - Visible por defecto #}
+        {# Tabla de conexiones (sin cambios en la estructura interna) #}
         <div data-accordion-content>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
-                    {# ... Contenido de la tabla (sin cambios) ... #}
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tiempo</th>
@@ -105,7 +115,7 @@
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Datos</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Delay Pool</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Solicitudes</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Dir. Remota</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Dir. Remota (del Destino)</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
@@ -129,7 +139,7 @@
                                 </div>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-sm">
-                                {% if connection.fd_total != "N/A" %}{{ (connection.fd_total / 1024 /1024)|round(2) }} MB
+                                {% if connection.fd_total != "N/A" %}{{ (connection.fd_total / 1024 / 1024)|round(2) }} MB
                                 {% else %}N/A{% endif %}
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap">
@@ -141,7 +151,7 @@
                                 {% else %}<span class="text-sm text-gray-500">N/A</span>{% endif %}
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">{{ connection.nrequests }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-sm font-mono ... hover:text-blue-600">{{ connection.remote }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm font-mono ... hover:text-blue-600">{{ connection.proxy_local_ip }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
