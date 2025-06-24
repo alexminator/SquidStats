@@ -8,7 +8,11 @@ from flask_socketio import SocketIO, emit
 from flask_apscheduler import APScheduler
 
 # ------------------- UTILIDADES Y SERVICIOS PERSONALIZADOS -------------------
-from database.database import create_dynamic_tables, get_engine, get_session, get_dynamic_models
+# --- MODIFICADO: Importar get_dynamic_metrics_model ---
+from database.database import (
+    create_dynamic_tables, get_engine, get_session, 
+    get_dynamic_models, get_dynamic_metrics_model
+)
 from parsers.connections import parse_raw_data, group_by_user
 from services.fetch_data import fetch_squid_data
 from parsers.cache import fetch_squid_cache_stats
@@ -33,12 +37,38 @@ import os
 import logging
 import time
 from threading import Lock
+import psutil # Importado para el cálculo de red en el hilo
 
 # ------------------- CONFIGURACIÓN -------------------
 class Config:
     SCHEDULER_API_ENABLED = True
 
 load_dotenv()
+
+# --- AÑADIDO: Función de utilidad para convertir tamaños a bytes ---
+def size_to_bytes(size_str):
+    """Convierte un string como '2.5 GB' a bytes."""
+    if not isinstance(size_str, str):
+        return 0
+    
+    size_str = size_str.strip().upper()
+    
+    try:
+        if 'G' in size_str:
+            value = float(size_str.replace('GB', '').strip())
+            return int(value * 1024**3)
+        if 'M' in size_str:
+            value = float(size_str.replace('MB', '').strip())
+            return int(value * 1024**2)
+        if 'K' in size_str:
+            value = float(size_str.replace('KB', '').strip())
+            return int(value * 1024)
+        
+        return int(float(size_str.replace('B', '').strip()))
+    except (ValueError, TypeError):
+        return 0
+# --- FIN AÑADIDO ---
+
 
 # ------------------- INICIALIZACIÓN APP -------------------
 app = Flask(__name__, static_folder='./static')
@@ -78,18 +108,42 @@ if g_parent_proxy_ip:
 else:
     logger.info("No se detectó un proxy padre en los logs recientes. Asumiendo conexión directa.")
 
+# Se llama una vez para asegurar que las tablas del día se creen al arrancar
+with app.app_context():
+    create_dynamic_tables(get_engine())
+
 # ======================================================================
 # Hilo para actualización periódica de datos
 # ======================================================================
 def realtime_data_thread():
-    """Hilo que actualiza los datos del sistema y caché periódicamente y los envía a los clientes via WebSocket"""
+    """
+    MODIFICADO: Ahora, además de emitir por WebSocket, este hilo guarda
+    las métricas en la base de datos cada 5 segundos.
+    """
     global realtime_cache_stats, realtime_system_info
+    
+    last_net_counters = psutil.net_io_counters()
+    last_check_time = time.time()
 
     while True:
         try:
             cache_data = fetch_squid_cache_stats()
             cache_stats = vars(cache_data) if hasattr(cache_data, '__dict__') else cache_data
             
+            current_time = time.time()
+            current_net_counters = psutil.net_io_counters()
+            time_delta = current_time - last_check_time
+
+            if time_delta > 0:
+                bytes_sent_sec = (current_net_counters.bytes_sent - last_net_counters.bytes_sent) / time_delta
+                bytes_recv_sec = (current_net_counters.bytes_recv - last_net_counters.bytes_recv) / time_delta
+            else:
+                bytes_sent_sec = 0
+                bytes_recv_sec = 0
+
+            last_net_counters = current_net_counters
+            last_check_time = current_time
+
             system_info = {
                 'hostname': socket.gethostname(),
                 'ips': get_network_info(),
@@ -104,16 +158,42 @@ def realtime_data_thread():
                 'local_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
 
+            # --- AÑADIDO: Guardar métricas en la Base de Datos ---
+            try:
+                date_suffix = datetime.now().strftime('%Y%m%d')
+                MetricsModel = get_dynamic_metrics_model(date_suffix)
+                
+                if MetricsModel:
+                    db_session = get_session()
+                    
+                    new_metric = MetricsModel(
+                        timestamp=datetime.now(),
+                        cpu_usage=float(system_info['cpu']['usage'].replace('%','')),
+                        ram_usage_bytes=size_to_bytes(system_info['ram']['used']),
+                        swap_usage_bytes=size_to_bytes(system_info['swap']['used']),
+                        net_sent_bytes_sec=int(bytes_sent_sec),
+                        net_recv_bytes_sec=int(bytes_recv_sec)
+                    )
+                    
+                    db_session.add(new_metric)
+                    db_session.commit()
+                    db_session.close()
+            except Exception as e:
+                logger.error(f"Error al guardar métricas en la BD: {str(e)}")
+            # --- FIN AÑADIDO ---
+
             with realtime_data_lock:
                 realtime_cache_stats = cache_stats
                 realtime_system_info = system_info
             
             socketio.emit('system_update', {
                 'cache_stats': cache_stats,
-                'system_info': system_info
+                'system_info': system_info,
+                'network_stats': {
+                    'up_mbps': round((bytes_sent_sec * 8) / 1_000_000, 2),
+                    'down_mbps': round((bytes_recv_sec * 8) / 1_000_000, 2)
+                }
             })
-            
-            logger.info("Datos en tiempo real actualizados y emitidos")
             
         except Exception as e:
             logger.error(f"Error en hilo de datos en tiempo real: {str(e)}")
@@ -125,7 +205,6 @@ def realtime_data_thread():
 # ======================================================================
 @socketio.on('connect')
 def handle_connect():
-    """Manejador para cuando un cliente se conecta a través de WebSocket"""
     logger.info(f"Cliente conectado: {request.sid}")
     
     with realtime_data_lock:
@@ -245,6 +324,41 @@ def cache_stats():
     except Exception as e:
         logger.error(f"Error in /stats: {str(e)}")
         return render_template('error.html', message="Error retrieving cache statistics or system info"), 500
+
+# --- AÑADIDO: Nueva ruta API para servir el historial de métricas del día ---
+@app.route('/api/metrics/today')
+def get_today_metrics():
+    db = None
+    try:
+        date_suffix = datetime.now().strftime('%Y%m%d')
+        MetricsModel = get_dynamic_metrics_model(date_suffix)
+        
+        if not MetricsModel:
+            logger.warning(f"No se encontró el modelo de métricas para {date_suffix}")
+            return jsonify([])
+
+        db = get_session()
+        metrics = db.query(MetricsModel).order_by(MetricsModel.timestamp.asc()).all()
+
+        results = [
+            {
+                "timestamp": m.timestamp.isoformat() + "Z",
+                "cpu_usage": m.cpu_usage,
+                "ram_usage_bytes": m.ram_usage_bytes,
+                "swap_usage_bytes": m.swap_usage_bytes,
+                "net_sent_bytes_sec": m.net_sent_bytes_sec,
+                "net_recv_bytes_sec": m.net_recv_bytes_sec,
+            } for m in metrics
+        ]
+        return jsonify(results)
+    except Exception as e:
+        logger.error(f"Error en API de métricas: {e}", exc_info=True)
+        return jsonify({"error": "No se pudieron obtener las métricas"}), 500
+    finally:
+        if db:
+            db.close()
+# --- FIN AÑADIDO ---
+
 
 # ------------------- VISTA DE LOGS DE USUARIOS -------------------
 @app.route('/logs')
@@ -385,7 +499,6 @@ def reports_by_range():
 @scheduler.task('interval', id='do_job_1', seconds=30, misfire_grace_time=900)
 def init_scheduler():
     log_file = os.getenv("SQUID_LOG", "/var/log/squid/access.log")
-    logger.info(f"Configurando scheduler para el archivo de log: {log_file}")
     if not os.path.exists(log_file):
         logger.error(f"Archivo de log no encontrado: {log_file}")
         return
@@ -409,7 +522,6 @@ def divide_filter(numerator, denominator, precision=2):
         num = float(numerator)
         den = float(denominator)
         if den == 0:
-            logger.warning("Intento de división por cero en plantilla")
             return 0.0
         return round(num / den, precision)
     except (TypeError, ValueError) as e:

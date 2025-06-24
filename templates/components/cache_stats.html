@@ -28,76 +28,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard de Sistema</title>
+    <link rel="icon" href="{{ url_for('static', filename=page_icon) }}" type="image/x-icon">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <style>
-        /* Estilos personalizados y animaciones que no se pueden replicar fácilmente con Tailwind */
-        @keyframes progress {
-            0% {
-                stroke-dasharray: 0 100;
-            }
-        }
-
-        .circle-animation {
-            animation: progress 1s ease-out forwards;
-        }
-
-        .main-tab-content, .tab-content {
-            display: none;
-        }
-
-        .main-tab-content.active, .tab-content.active {
-            display: block;
-            animation: fadeIn 0.5s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
-
+        @keyframes progress { 0% { stroke-dasharray: 0 100; } }
+        .circle-animation { animation: progress 1s ease-out forwards; }
+        .main-tab-content, .tab-content { display: none; }
+        .main-tab-content.active, .tab-content.active { display: block; animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .main-tab-btn.active::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background-color: #3b82f6; /* blue-600 */
-            animation: underline 0.3s ease;
+            content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+            background-color: #3b82f6; animation: underline 0.3s ease;
         }
-
-        @keyframes underline {
-            from {
-                transform: scaleX(0);
-            }
-            to {
-                transform: scaleX(1);
-            }
-        }
-
-        /* Animación para cambios de valores */
-        .value-change {
-            animation: pulse 1s;
-        }
-
-        @keyframes pulse {
-            0% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.1);
-            }
-            100% {
-                transform: scale(1);
-            }
-        }
+        @keyframes underline { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+        .value-change { animation: pulse 1s; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
     </style>
 </head>
 
@@ -222,60 +171,12 @@
     </div>
 
     <script>
-        // Registrar el plugin de datalabels
         Chart.register(ChartDataLabels);
 
-        // Variables globales
         let maxRamBytes = 0, maxSwapBytes = 0;
-        let cpuBuffer = [], ramBuffer = [], swapBuffer = [], netUpBuffer = [], netDownBuffer = [];
-        const historySize = 20;
-        let minuteLabels = [], cpuMinuteData = [], ramMinuteData = [], swapMinuteData = [], networkUpMinuteData = [], networkDownMinuteData = [];
-
-        // Utilidades de persistencia
-        const storage = {
-            get: (key, fallback) => {
-                const val = sessionStorage.getItem(key);
-                if (!val) return fallback;
-                try {
-                    return JSON.parse(val);
-                } catch (e) {
-                    console.warn(`Error parsing sessionStorage key "${key}". Resetting to default.`);
-                    sessionStorage.removeItem(key);
-                    return fallback;
-                }
-            },
-            set: (key, arr) => sessionStorage.setItem(key, JSON.stringify(arr)),
-            setAll: () => {
-                ['cpuMinuteData', 'ramMinuteData', 'swapMinuteData', 'networkUpMinuteData', 'networkDownMinuteData', 'minuteLabels']
-                    .forEach(key => storage.set(key, window[key]));
-            }
-        };
-
-        // Inicialización de datos
-        function initializeData() {
-            const initialCpu = parseFloat("{{ system_info.cpu.usage|replace('%','') }}");
-            const initialRam = sizeToBytes("{{ system_info.ram.used }}");
-            const initialSwap = sizeToBytes("{{ system_info.swap.used }}");
-            const initialNetUp = parseFloat("{{ network_stats.up_mbps|default('0') }}");
-            const initialNetDown = parseFloat("{{ network_stats.down_mbps|default('0') }}");
-
-            cpuMinuteData = storage.get('cpuMinuteData', Array(historySize).fill(initialCpu));
-            ramMinuteData = storage.get('ramMinuteData', Array(historySize).fill(initialRam));
-            swapMinuteData = storage.get('swapMinuteData', Array(historySize).fill(initialSwap));
-            networkUpMinuteData = storage.get('networkUpMinuteData', Array(historySize).fill(initialNetUp));
-            networkDownMinuteData = storage.get('networkDownMinuteData', Array(historySize).fill(initialNetDown));
-
-            minuteLabels = storage.get('minuteLabels', (() => {
-                const now = new Date();
-                return Array.from({ length: historySize }, (_, i) => {
-                    const t = new Date(now.getTime() - (historySize - 1 - i) * 60000);
-                    return formatTime(t);
-                });
-            })());
-        }
-        initializeData();
-
-        // Función para formatear hora
+        const historySize = 720; 
+        
+        // --- FUNCIONES ORIGINALES (COMPLETAS Y RESTAURADAS) ---
         function formatTime(date) {
             let hours = date.getHours();
             const minutes = date.getMinutes().toString().padStart(2, '0');
@@ -283,8 +184,6 @@
             hours = hours % 12 || 12;
             return `${hours}:${minutes} ${ampm}`;
         }
-
-        // Función para manejar las pestañas principales
         function openMainTab(tabName) {
             document.querySelectorAll('.main-tab-content').forEach(content => content.classList.remove('active'));
             document.querySelectorAll('.main-tab-btn').forEach(btn => {
@@ -296,13 +195,9 @@
             tabBtn.classList.add('active', 'text-blue-600');
             tabBtn.classList.remove('text-gray-500');
         }
-
-        // Configurar eventos para las pestañas principales
         document.getElementById('dashboardTab').addEventListener('click', () => openMainTab('dashboard'));
         document.getElementById('cacheTab').addEventListener('click', () => openMainTab('cache'));
         document.getElementById('networkTab').addEventListener('click', () => openMainTab('network'));
-
-        // Función para manejar las pestañas internas de la sección de dashboard
         document.querySelectorAll('.tab-btn').forEach((button, index) => {
             button.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -311,123 +206,59 @@
                 });
                 button.classList.add('active', 'text-blue-600', 'border-b-2', 'border-blue-600');
                 button.classList.remove('text-gray-500');
-
                 document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
                 document.querySelectorAll('.tab-content')[index].classList.add('active');
             });
         });
-
-        // Función para formatear tamaños
-        function formatSizeCompact(bytes) {
-            if (bytes === 0) return '0 B';
-            const units = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(1024));
-            return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1))} ${units[i]}`;
-        }
-
         const chartOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            tension: 0.3,
-            fill: true,
-            pointRadius: 4,
+            responsive: true, maintainAspectRatio: false, tension: 0.3, fill: true, pointRadius: 2,
             scales: {
                 x: { grid: { color: 'rgba(0, 0, 0, 0.05)' } },
                 y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.05)' } }
             },
             plugins: { legend: { display: true }, datalabels: { display: false } }
         };
+        const cpuChart = new Chart('cpuChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Uso de CPU (%)', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', pointBackgroundColor: '#ef4444' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100, title: { display: true, text: '%' } } } } });
+        const ramChart = new Chart('ramChart', { type: 'line', data: { labels: [], datasets: [{ label: 'RAM Usada', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', pointBackgroundColor: '#3b82f6' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'RAM Usada: ' + formatSizeCompact(ctx.raw) } } } } });
+        const swapChart = new Chart('swapChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Swap Usada', data: [], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', pointBackgroundColor: '#10b981' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'SWAP Usada: ' + formatSizeCompact(ctx.raw) } } } } });
+        const networkChart = new Chart('networkChart', { type: 'line', data: { labels: [], datasets: [ { label: 'Subida (Mbps)', data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', pointBackgroundColor: '#06b6d4' }, { label: 'Bajada (Mbps)', data: [], borderColor: '#f59e42', backgroundColor: 'rgba(245,158,66,0.1)', pointBackgroundColor: '#f59e42' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Mbps' } } } } });
+        function formatSizeCompact(bytes) { if (bytes === 0) return '0 B'; const units = ['B', 'KB', 'MB', 'GB']; const i = Math.floor(Math.log(bytes) / Math.log(1024)); return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1))} ${units[i]}`; }
+        function parseSize(sizeStr) { if (!sizeStr) return { value: 0, unit: 'B' }; const parts = sizeStr.trim().split(' '); return { value: parseFloat(parts[0]) || 0, unit: parts.length > 1 ? parts[1].charAt(0) : 'B' }; }
+        function sizeToBytes(sizeStr) { const { value, unit } = parseSize(sizeStr); const multipliers = { 'G': 1024 * 1024 * 1024, 'M': 1024 * 1024, 'K': 1024 }; return value * (multipliers[unit] || 1); }
+        function updateRings(info) { const cpuPercent = parseFloat(info.cpu.usage.replace('%', '')); document.getElementById('cpu-ring').setAttribute('stroke-dasharray', `${cpuPercent},100`); document.getElementById('cpu-value').textContent = `${cpuPercent.toFixed(1)}%`; const ramUsedInfo = parseSize(info.ram.used); document.getElementById('ram-used').textContent = `${ramUsedInfo.value.toFixed(1)}${ramUsedInfo.unit}`; document.getElementById('ram-ring').setAttribute('stroke-dasharray', `${parseFloat(info.ram.percent.replace('%', ''))},100`); const swapUsedInfo = parseSize(info.swap.used); document.getElementById('swap-used').textContent = `${swapUsedInfo.value.toFixed(1)}${swapUsedInfo.unit}`; document.getElementById('swap-ring').setAttribute('stroke-dasharray', `${parseFloat(info.swap.percent.replace('%', '') || 0)},100`); }
+        function updateSystemInfo(info) { document.getElementById('hostname').textContent = info.hostname; document.getElementById('ip-addresses').innerHTML = info.ips.map(ip => ip.ip).join('<br>'); document.getElementById('os-info').textContent = info.os; document.getElementById('uptime').textContent = info.uptime; document.getElementById('local-time').textContent = info.local_time; }
+        function updateCard(statId, value, isSize = false) { const element = document.querySelector(`[data-stat="${statId}"]`); if (!element) return; let formattedValue = value; if (isSize) { const bytes = parseFloat(value); formattedValue = (bytes / (1024 * 1024) < 1) ? `${Math.round(bytes / 1024)} MB` : `${(bytes / (1024 * 1024)).toFixed(2)} GB`; } if (element.textContent !== formattedValue.toString()) { element.textContent = formattedValue; element.classList.add('value-change'); setTimeout(() => element.classList.remove('value-change'), 1000); } }
+        function updateCacheStats(stats) { updateCard('entradas_almacenadas', stats.store_entries); updateCard('uso_de_capacidad', stats.capacity_used); updateCard('espacio_total', stats.fs_space_total, true); updateCard('espacio_usado', stats.fs_space_used, true); updateCard('eliminación', stats.removal_policy); updateCard('edad_lru', `${stats.lru_age_days} días`); }
 
-        const cpuChart = new Chart('cpuChart', {
-            type: 'line', data: { labels: minuteLabels, datasets: [{ label: 'Uso de CPU (%)', data: cpuMinuteData, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', pointBackgroundColor: '#ef4444' }] },
-            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100, title: { display: true, text: '%' } } } }
-        });
-
-        const ramChart = new Chart('ramChart', {
-            type: 'line', data: { labels: minuteLabels, datasets: [{ label: 'RAM Usada', data: ramMinuteData, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', pointBackgroundColor: '#3b82f6' }] },
-            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'RAM Usada: ' + formatSizeCompact(ctx.raw) } } } }
-        });
-
-        const swapChart = new Chart('swapChart', {
-            type: 'line', data: { labels: minuteLabels, datasets: [{ label: 'Swap Usada', data: swapMinuteData, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', pointBackgroundColor: '#10b981' }] },
-            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'SWAP Usada: ' + formatSizeCompact(ctx.raw) } } } }
-        });
-
-        const networkChart = new Chart('networkChart', {
-            type: 'line', data: { labels: minuteLabels, datasets: [{ label: 'Subida (Mbps)', data: networkUpMinuteData, borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', pointBackgroundColor: '#06b6d4' }, { label: 'Bajada (Mbps)', data: networkDownMinuteData, borderColor: '#f59e42', backgroundColor: 'rgba(245,158,66,0.1)', pointBackgroundColor: '#f59e42' }] },
-            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Mbps' } } } }
-        });
-
-        maxRamBytes = sizeToBytes("{{ system_info.ram.total }}");
-        maxSwapBytes = sizeToBytes("{{ system_info.swap.total }}");
-        ramChart.options.scales.y.max = maxRamBytes;
-        swapChart.options.scales.y.max = maxSwapBytes;
-        ramChart.update();
-        swapChart.update();
-
-        function parseSize(sizeStr) {
-            if (!sizeStr) return { value: 0, unit: 'B' };
-            const parts = sizeStr.trim().split(' ');
-            return { value: parseFloat(parts[0]) || 0, unit: parts.length > 1 ? parts[1].charAt(0) : 'B' };
-        }
-
-        function sizeToBytes(sizeStr) {
-            const { value, unit } = parseSize(sizeStr);
-            const multipliers = { 'G': 1024 * 1024 * 1024, 'M': 1024 * 1024, 'K': 1024 };
-            return value * (multipliers[unit] || 1);
-        }
-
-        function updateRings(info) {
-            const cpuPercent = parseFloat(info.cpu.usage.replace('%', ''));
-            document.getElementById('cpu-ring').setAttribute('stroke-dasharray', `${cpuPercent},100`);
-            document.getElementById('cpu-value').textContent = `${cpuPercent.toFixed(1)}%`;
-            const ramUsedInfo = parseSize(info.ram.used);
-            document.getElementById('ram-used').textContent = `${ramUsedInfo.value.toFixed(1)}${ramUsedInfo.unit}`;
-            document.getElementById('ram-ring').setAttribute('stroke-dasharray', `${parseFloat(info.ram.percent.replace('%', ''))},100`);
-            const swapUsedInfo = parseSize(info.swap.used);
-            document.getElementById('swap-used').textContent = `${swapUsedInfo.value.toFixed(1)}${swapUsedInfo.unit}`;
-            document.getElementById('swap-ring').setAttribute('stroke-dasharray', `${parseFloat(info.swap.percent.replace('%', '') || 0)},100`);
-        }
-
-        function updateSystemInfo(info) {
-            document.getElementById('hostname').textContent = info.hostname;
-            document.getElementById('ip-addresses').innerHTML = info.ips.map(ip => ip.ip).join('<br>');
-            document.getElementById('os-info').textContent = info.os;
-            document.getElementById('uptime').textContent = info.uptime;
-            document.getElementById('local-time').textContent = formatTime(new Date());
-        }
-
-        function updateCard(statId, value, isSize = false) {
-            const element = document.querySelector(`[data-stat="${statId}"]`);
-            if (!element) return;
-            let formattedValue = value;
-            if (isSize) {
-                const bytes = parseFloat(value);
-                formattedValue = (bytes / (1024 * 1024) < 1) ? `${Math.round(bytes / 1024)} MB` : `${(bytes / (1024 * 1024)).toFixed(2)} GB`;
-            }
-            if (element.textContent !== formattedValue.toString()) {
-                element.textContent = formattedValue;
-                element.classList.add('value-change');
-                setTimeout(() => element.classList.remove('value-change'), 1000);
-            }
-        }
-
-        function updateCacheStats(stats) {
-            updateCard('entradas_almacenadas', stats.store_entries);
-            updateCard('uso_de_capacidad', stats.capacity_used);
-            updateCard('espacio_total', stats.fs_space_total, true);
-            updateCard('espacio_usado', stats.fs_space_used, true);
-            updateCard('eliminación', stats.removal_policy);
-            updateCard('edad_lru', `${stats.lru_age_days} días`);
-        }
-
-        function addMinuteData(cpu, ram, swap, netUp, netDown) {
-            const arrays = [cpuMinuteData, ramMinuteData, swapMinuteData, networkUpMinuteData, networkDownMinuteData, minuteLabels];
-            const values = [cpu, ram, swap, netUp, netDown, formatTime(new Date())];
-            arrays.forEach((arr, i) => { arr.push(values[i]); if (arr.length > historySize) arr.shift(); });
-            const charts = [cpuChart, ramChart, swapChart, networkChart];
-            charts.forEach(chart => { chart.data.labels = [...minuteLabels]; chart.update('none'); });
-            storage.setAll();
+        // --- AÑADIDO: Carga de datos históricos desde la API ---
+        function loadHistoricData() {
+            fetch('/api/metrics/today')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data || data.length === 0) { console.log("No hay historial de métricas para hoy."); return; }
+                    const labels = [], cpuData = [], ramData = [], swapData = [], netUpData = [], netDownData = [];
+                    data.forEach(metric => {
+                        labels.push(formatTime(new Date(metric.timestamp)));
+                        cpuData.push(parseFloat(metric.cpu_usage).toFixed(1));
+                        ramData.push(metric.ram_usage_bytes);
+                        swapData.push(metric.swap_usage_bytes);
+                        netUpData.push(((metric.net_sent_bytes_sec * 8) / 1000000).toFixed(2));
+                        netDownData.push(((metric.net_recv_bytes_sec * 8) / 1000000).toFixed(2));
+                    });
+                    const charts = [cpuChart, ramChart, swapChart, networkChart];
+                    const chartData = [cpuData, ramData, swapData, [netUpData, netDownData]];
+                    charts.forEach((chart, chartIndex) => {
+                        chart.data.labels = [...labels];
+                        if (chartIndex === 3) {
+                            chart.data.datasets[0].data = chartData[chartIndex][0];
+                            chart.data.datasets[1].data = chartData[chartIndex][1];
+                        } else {
+                            chart.data.datasets[0].data = chartData[chartIndex];
+                        }
+                        chart.update();
+                    });
+                })
+                .catch(error => console.error('Error al cargar historial de métricas:', error));
         }
 
         const socket = io();
@@ -435,26 +266,43 @@
             updateRings(data.system_info);
             updateSystemInfo(data.system_info);
             updateCacheStats(data.cache_stats);
-            const newData = [
-                parseFloat(data.system_info.cpu.usage.replace('%', '')),
-                sizeToBytes(data.system_info.ram.used),
-                sizeToBytes(data.system_info.swap.used),
-                data.network_stats ? parseFloat(data.network_stats.up_mbps) : 0,
-                data.network_stats ? parseFloat(data.network_stats.down_mbps) : 0
-            ];
-            [cpuBuffer, ramBuffer, swapBuffer, netUpBuffer, netDownBuffer].forEach((buf, i) => buf.push(newData[i]));
-            if (cpuBuffer.length >= 12) {
-                const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
-                addMinuteData(avg(cpuBuffer), ramBuffer.at(-1), swapBuffer.at(-1), avg(netUpBuffer), avg(netDownBuffer));
-                [cpuBuffer, ramBuffer, swapBuffer, netUpBuffer, netDownBuffer].forEach(buf => buf.length = 0);
+
+            // --- MODIFICADO: Lógica para añadir datos en vivo a las gráficas ---
+            function appendLiveData(chart, label, newData) {
+                chart.data.labels.push(label);
+                chart.data.datasets.forEach((dataset, index) => {
+                    const dataPoint = Array.isArray(newData) ? newData[index] : newData;
+                    dataset.data.push(dataPoint);
+                });
+                while (chart.data.labels.length > historySize) {
+                    chart.data.labels.shift();
+                    chart.data.datasets.forEach(dataset => dataset.data.shift());
+                }
+                chart.update('none');
+            }
+
+            // --- CORREGIDO: Se usa el timestamp del servidor para la etiqueta en vivo ---
+            const newLabel = formatTime(new Date(data.system_info.timestamp_utc));
+
+            appendLiveData(cpuChart, newLabel, parseFloat(data.system_info.cpu.usage.replace('%','')));
+            appendLiveData(ramChart, newLabel, sizeToBytes(data.system_info.ram.used));
+            appendLiveData(swapChart, newLabel, sizeToBytes(data.system_info.swap.used));
+            if (data.network_stats) {
+                appendLiveData(networkChart, newLabel, [ data.network_stats.up_mbps, data.network_stats.down_mbps ]);
             }
         });
 
-        // Llamada inicial para poblar los datos
-        updateRings({
-            cpu: { usage: "{{ system_info.cpu.usage }}", percent: "{{ system_info.cpu.usage }}" },
-            ram: { used: "{{ system_info.ram.used }}", percent: "{{ system_info.ram.percent }}" },
-            swap: { used: "{{ system_info.swap.used }}", percent: "{{ system_info.swap.percent }}" }
+        document.addEventListener('DOMContentLoaded', function() {
+            maxRamBytes = sizeToBytes("{{ system_info.ram.total }}");
+            maxSwapBytes = sizeToBytes("{{ system_info.swap.total }}");
+            ramChart.options.scales.y.max = maxRamBytes;
+            swapChart.options.scales.y.max = maxSwapBytes;
+            updateRings({
+                cpu: { usage: "{{ system_info.cpu.usage }}", percent: "{{ system_info.cpu.usage }}" },
+                ram: { used: "{{ system_info.ram.used }}", percent: "{{ system_info.ram.percent }}" },
+                swap: { used: "{{ system_info.swap.used }}", percent: "{{ system_info.swap.percent }}" }
+            });
+            loadHistoricData();
         });
     </script>
 </body>
