@@ -30,7 +30,8 @@ from utils.updateSquidStats import updateSquidStats
 
 # ------------------- PAQUETES ESTÁNDAR -------------------
 from dotenv import load_dotenv
-from datetime import datetime
+# --- CORREGIDO: Se importa timezone para manejar timestamps de forma correcta ---
+from datetime import datetime, timezone
 import socket
 import sys
 import os
@@ -144,6 +145,10 @@ def realtime_data_thread():
             last_net_counters = current_net_counters
             last_check_time = current_time
 
+            # --- CORREGIDO: Se añade 'timestamp_utc' para enviarlo al cliente. ---
+            # Este timestamp universal (UTC) en formato ISO es el estándar para que
+            # JavaScript pueda interpretarlo correctamente y mostrar la hora local del usuario.
+            utc_now = datetime.now(timezone.utc)
             system_info = {
                 'hostname': socket.gethostname(),
                 'ips': get_network_info(),
@@ -155,7 +160,8 @@ def realtime_data_thread():
                 'python_version': sys.version.split()[0],
                 'squid_version': get_squid_version(),
                 'timezone': get_timezone(),
-                'local_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                'local_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'timestamp_utc': utc_now.isoformat()
             }
 
             # --- AÑADIDO: Guardar métricas en la Base de Datos ---
@@ -166,8 +172,10 @@ def realtime_data_thread():
                 if MetricsModel:
                     db_session = get_session()
                     
+                    # --- CORREGIDO: Se guarda el timestamp en UTC para consistencia. ---
+                    # Usar UTC en la base de datos evita problemas de zona horaria.
                     new_metric = MetricsModel(
-                        timestamp=datetime.now(),
+                        timestamp=utc_now,
                         cpu_usage=float(system_info['cpu']['usage'].replace('%','')),
                         ram_usage_bytes=size_to_bytes(system_info['ram']['used']),
                         swap_usage_bytes=size_to_bytes(system_info['swap']['used']),
@@ -340,9 +348,13 @@ def get_today_metrics():
         db = get_session()
         metrics = db.query(MetricsModel).order_by(MetricsModel.timestamp.asc()).all()
 
+        # --- CORREGIDO: Se formatea el timestamp directamente con isoformat(). ---
+        # Como el timestamp en la BD ahora es UTC, isoformat() generará el string
+        # correcto con la información de la zona horaria (ej: +00:00), que
+        # `new Date()` en JS puede interpretar sin problemas.
         results = [
             {
-                "timestamp": m.timestamp.isoformat() + "Z",
+                "timestamp": m.timestamp.isoformat(),
                 "cpu_usage": m.cpu_usage,
                 "ram_usage_bytes": m.ram_usage_bytes,
                 "swap_usage_bytes": m.swap_usage_bytes,
@@ -569,7 +581,7 @@ def logs_fragment():
             db.close()
 
 from flask import Blueprint, render_template, request
-from datetime import datetime, date
+from datetime import date
 from services.fetch_data_logs import get_metrics_for_date
 
 reports_bp = Blueprint('reports', __name__)
