@@ -348,20 +348,25 @@ def get_today_metrics():
         db = get_session()
         metrics = db.query(MetricsModel).order_by(MetricsModel.timestamp.asc()).all()
 
-        # --- CORREGIDO: Se formatea el timestamp directamente con isoformat(). ---
-        # Como el timestamp en la BD ahora es UTC, isoformat() generará el string
-        # correcto con la información de la zona horaria (ej: +00:00), que
-        # `new Date()` en JS puede interpretar sin problemas.
-        results = [
-            {
-                "timestamp": m.timestamp.isoformat(),
+        results = []
+        for m in metrics:
+            # --- INICIO DE LA CORRECCIÓN ---
+            # El timestamp que viene de SQLite es "naive" (sin zona horaria).
+            # Le decimos a Python que debe tratarlo como si fuera UTC.
+            aware_timestamp = m.timestamp.replace(tzinfo=timezone.utc)
+            
+            # Ahora, al convertirlo a ISO, incluirá la información de la zona horaria (+00:00 o Z),
+            # que es lo que JavaScript necesita para hacer la conversión local correctamente.
+            results.append({
+                "timestamp": aware_timestamp.isoformat(),
                 "cpu_usage": m.cpu_usage,
                 "ram_usage_bytes": m.ram_usage_bytes,
                 "swap_usage_bytes": m.swap_usage_bytes,
                 "net_sent_bytes_sec": m.net_sent_bytes_sec,
                 "net_recv_bytes_sec": m.net_recv_bytes_sec,
-            } for m in metrics
-        ]
+            })
+            # --- FIN DE LA CORRECCIÓN ---
+            
         return jsonify(results)
     except Exception as e:
         logger.error(f"Error en API de métricas: {e}", exc_info=True)
