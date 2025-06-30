@@ -8,7 +8,7 @@ import re
 from flask import Flask, jsonify, Response
 import psutil
 import eventlet
-eventlet.monkey_patch()  # Parchado para eventlet, imprescindible para WebSocket con Flask-SocketIO
+eventlet.monkey_patch()  
 
 from flask_socketio import SocketIO
 import threading

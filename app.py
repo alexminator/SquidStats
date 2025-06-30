@@ -143,9 +143,6 @@ def realtime_data_thread():
             last_net_counters = current_net_counters
             last_check_time = current_time
 
-            # --- CORREGIDO: Se añade 'timestamp_utc' para enviarlo al cliente. ---
-            # Este timestamp universal (UTC) en formato ISO es el estándar para que
-            # JavaScript pueda interpretarlo correctamente y mostrar la hora local del usuario.
             utc_now = datetime.now(timezone.utc)
             system_info = {
                 'hostname': socket.gethostname(),
@@ -162,7 +159,7 @@ def realtime_data_thread():
                 'timestamp_utc': utc_now.isoformat()
             }
 
-            # --- AÑADIDO: Guardar métricas en la Base de Datos ---
+            # --- Guardar métricas en la Base de Datos ---
             try:
                 date_suffix = datetime.now().strftime('%Y%m%d')
                 MetricsModel = get_dynamic_metrics_model(date_suffix)
@@ -170,7 +167,7 @@ def realtime_data_thread():
                 if MetricsModel:
                     db_session = get_session()
                     
-                    # --- CORREGIDO: Se guarda el timestamp en UTC para consistencia. ---
+                    # --- Se guarda el timestamp en UTC para consistencia. ---
                     # Usar UTC en la base de datos evita problemas de zona horaria.
                     new_metric = MetricsModel(
                         timestamp=utc_now,
@@ -186,7 +183,6 @@ def realtime_data_thread():
                     db_session.close()
             except Exception as e:
                 logger.error(f"Error al guardar métricas en la BD: {str(e)}")
-            # --- FIN AÑADIDO ---
 
             with realtime_data_lock:
                 realtime_cache_stats = cache_stats
