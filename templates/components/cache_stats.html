@@ -47,6 +47,15 @@
         @keyframes underline { from { transform: scaleX(0); } to { transform: scaleX(1); } }
         .value-change { animation: pulse 1s; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+
+        /* --- INICIO DE LA CORRECCIÓN: ESTILO DE ANILLOS (CSS DIRECTO) --- */
+        /* Se añade una regla CSS directa para asegurar la terminación redondeada del trazo. */
+        /* Esto es más robusto que depender de la clase de Tailwind CDN. */
+        .rounded-stroke {
+            stroke-linecap: round;
+        }
+        /* --- FIN DE LA CORRECCIÓN: ESTILO DE ANILLOS (CSS DIRECTO) --- */
+
     </style>
 </head>
 
@@ -54,17 +63,21 @@
     <div class="max-w-7xl mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">Dashboard de Estadísticas del Sistema</h1>
 
+        {# --- INICIO DE LA CORRECCIÓN: ORDEN DE PESTAÑAS --- #}
+        {# Se ha reordenado el HTML para que "Tráfico de Red" aparezca en segundo lugar. #}
         <div class="flex border-b mb-6">
             <button id="dashboardTab" class="main-tab-btn active relative overflow-hidden py-3 px-6 font-medium text-blue-600">
                 <i class="fas fa-tachometer-alt mr-2"></i>Dashboard del Sistema
             </button>
-            <button id="cacheTab" class="main-tab-btn relative overflow-hidden py-3 px-6 font-medium text-gray-500 hover:text-blue-600">
-                <i class="fas fa-database mr-2"></i>Estadísticas de Caché
-            </button>
             <button id="networkTab" class="main-tab-btn relative overflow-hidden py-3 px-6 font-medium text-gray-500 hover:text-blue-600">
                 <i class="fas fa-network-wired mr-2"></i>Tráfico de Red
             </button>
+            <button id="cacheTab" class="main-tab-btn relative overflow-hidden py-3 px-6 font-medium text-gray-500 hover:text-blue-600">
+                <i class="fas fa-database mr-2"></i>Estadísticas de Caché
+            </button>
         </div>
+        {# --- FIN DE LA CORRECCIÓN: ORDEN DE PESTAÑAS --- #}
+
 
         <div id="dashboardContent" class="main-tab-content active">
             <section class="mb-12">
@@ -79,7 +92,10 @@
                                 <div class="relative w-36 h-36">
                                     <svg viewBox="0 0 36 36" class="block mx-auto">
                                         <path class="fill-none stroke-red-100 stroke-[3.5]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                        <path id="cpu-ring" class="circle-animation fill-none stroke-linecap-round stroke-red-500 stroke-[3.5]" stroke-dasharray="0,100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        {# --- INICIO DE LA CORRECCIÓN: ESTILO DE ANILLOS --- #}
+                                        {# Se aplica la clase CSS personalizada '.rounded-stroke' para la terminación redondeada. #}
+                                        <path id="cpu-ring" class="circle-animation fill-none rounded-stroke stroke-red-500 stroke-[3.5]" stroke-dasharray="0,100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        {# --- FIN DE LA CORRECCIÓN: ESTILO DE ANILLOS --- #}
                                         <text id="cpu-value" x="18" y="18" class="text-[0.5rem] fill-gray-500" text-anchor="middle" dominant-baseline="middle">0%</text>
                                     </svg>
                                 </div>
@@ -90,7 +106,9 @@
                                 <div class="relative w-36 h-36">
                                     <svg viewBox="0 0 36 36" class="block mx-auto">
                                         <path class="fill-none stroke-blue-100 stroke-[3.5]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                        <path id="ram-ring" class="circle-animation fill-none stroke-linecap-round stroke-blue-600 stroke-[3.5]" stroke-dasharray="0,100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        {# --- INICIO DE LA CORRECCIÓN: ESTILO DE ANILLOS --- #}
+                                        <path id="ram-ring" class="circle-animation fill-none rounded-stroke stroke-blue-600 stroke-[3.5]" stroke-dasharray="0,100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        {# --- FIN DE LA CORRECCIÓN: ESTILO DE ANILLOS --- #}
                                         <text id="ram-used" x="18" y="18" class="text-[0.5rem] fill-gray-500" text-anchor="middle" dominant-baseline="middle">0G</text>
                                     </svg>
                                 </div>
@@ -101,7 +119,9 @@
                                 <div class="relative w-36 h-36">
                                     <svg viewBox="0 0 36 36" class="block mx-auto">
                                         <path class="fill-none stroke-emerald-100 stroke-[3.5]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                        <path id="swap-ring" class="circle-animation fill-none stroke-linecap-round stroke-emerald-500 stroke-[3.5]" stroke-dasharray="0,100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        {# --- INICIO DE LA CORRECCIÓN: ESTILO DE ANILLOS --- #}
+                                        <path id="swap-ring" class="circle-animation fill-none rounded-stroke stroke-emerald-500 stroke-[3.5]" stroke-dasharray="0,100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        {# --- FIN DE LA CORRECCIÓN: ESTILO DE ANILLOS --- #}
                                         <text id="swap-used" x="18" y="18" class="text-[0.5rem] fill-gray-500" text-anchor="middle" dominant-baseline="middle">0G</text>
                                     </svg>
                                 </div>
@@ -140,6 +160,20 @@
             </section>
         </div>
 
+        {# --- INICIO DE LA CORRECCIÓN: ORDEN DE PESTAÑAS (CONTENIDO) --- #}
+        {# Se mueve el bloque de contenido de "Tráfico de Red" para que coincida con el orden de los botones. #}
+        <div id="networkContent" class="main-tab-content">
+            <section class="bg-white rounded-xl shadow-lg p-6">
+                <div class="flex items-center mb-6">
+                    <i class="fas fa-network-wired text-2xl text-blue-600 mr-3"></i>
+                    <h2 class="text-xl font-bold text-gray-800">Tráfico de Red</h2>
+                </div>
+                <div class="h-80"><canvas id="networkChart"></canvas></div>
+            </section>
+        </div>
+        {# --- FIN DE LA CORRECCIÓN: ORDEN DE PESTAÑAS (CONTENIDO) --- #}
+
+
         <div id="cacheContent" class="main-tab-content">
             <section class="cache-stats">
                 <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
@@ -156,16 +190,6 @@
                         {{ flip_card(icon='fas fa-clock', title='Edad LRU', value=cache_stats.lru_age_days ~ ' días', back_title='Edad LRU', description='Tiempo desde que el objeto menos usado fue accedido por última vez.') }}
                     </div>
                 </div>
-            </section>
-        </div>
-
-        <div id="networkContent" class="main-tab-content">
-            <section class="bg-white rounded-xl shadow-lg p-6">
-                <div class="flex items-center mb-6">
-                    <i class="fas fa-network-wired text-2xl text-blue-600 mr-3"></i>
-                    <h2 class="text-xl font-bold text-gray-800">Tráfico de Red</h2>
-                </div>
-                <div class="h-80"><canvas id="networkChart"></canvas></div>
             </section>
         </div>
     </div>
@@ -217,29 +241,23 @@
         });
     });
 
+    // --- INICIO DE LA CORRECCIÓN: OPCIONES DE GRÁFICAS ---
+    // Se ha cambiado 'pointRadius' a 0 para eliminar los puntos de los datos.
+    // Se ha añadido 'pointHoverRadius' en 0 para que no aparezcan tampoco al pasar el ratón.
     const chartOptions = {
-        responsive: true, maintainAspectRatio: false, tension: 0.3, fill: true, pointRadius: 2,
+        responsive: true, maintainAspectRatio: false, tension: 0.3, fill: true, 
+        pointRadius: 0,
+        pointHoverRadius: 0,
         scales: {
             x: {
                 grid: { color: 'rgba(0, 0, 0, 0.05)' },
                 ticks: {
-                    // La función 'callback' decide qué etiqueta mostrar.
                     callback: function(value, index, ticks) {
-                        // --- INICIO DE LA CORRECCIÓN ---
-                        // Se comprueba si el punto actual es el último en la gráfica.
-                        // 'ticks' es el array de todas las posibles etiquetas.
                         const isLastPoint = index === ticks.length - 1;
-
-                        // Se muestra una etiqueta si:
-                        // 1. El índice es un múltiplo de nuestro intervalo (cada 10 mins).
-                        // 2. O si es el último punto de datos (para asegurar que se vea la hora actual).
                         if (index % pointsPerLabel === 0 || isLastPoint) {
                             return this.getLabelForValue(value);
                         }
-                        
-                        // Para todas las demás, se retorna null para ocultarlas.
                         return null; 
-                        // --- FIN DE LA CORRECCIÓN ---
                     },
                     autoSkip: false,
                     maxRotation: 0,
@@ -256,16 +274,39 @@
             datalabels: { display: false } 
         }
     };
+    // --- FIN DE LA CORRECCIÓN: OPCIONES DE GRÁFICAS ---
 
-    const cpuChart = new Chart('cpuChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Uso de CPU (%)', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', pointBackgroundColor: '#ef4444' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100, title: { display: true, text: '%' } } } } });
-    const ramChart = new Chart('ramChart', { type: 'line', data: { labels: [], datasets: [{ label: 'RAM Usada', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', pointBackgroundColor: '#3b82f6' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'RAM Usada: ' + formatSizeCompact(ctx.raw) } } } } });
-    const swapChart = new Chart('swapChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Swap Usada', data: [], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', pointBackgroundColor: '#10b981' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'SWAP Usada: ' + formatSizeCompact(ctx.raw) } } } } });
-    const networkChart = new Chart('networkChart', { type: 'line', data: { labels: [], datasets: [ { label: 'Subida (Mbps)', data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', pointBackgroundColor: '#06b6d4' }, { label: 'Bajada (Mbps)', data: [], borderColor: '#f59e42', backgroundColor: 'rgba(245,158,66,0.1)', pointBackgroundColor: '#f59e42' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Mbps' } } } } });
+    // --- INICIO DE LA CORRECCIÓN: DEFINICIÓN DE GRÁFICAS ---
+    // Se ha añadido la propiedad 'borderWidth' con valor 1.5 para hacer las líneas más finas.
+    const cpuChart = new Chart('cpuChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Uso de CPU (%)', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', pointBackgroundColor: '#ef4444', borderWidth: 1.5 }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100, title: { display: true, text: '%' } } } } });
+    const ramChart = new Chart('ramChart', { type: 'line', data: { labels: [], datasets: [{ label: 'RAM Usada', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', pointBackgroundColor: '#3b82f6', borderWidth: 1.5 }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'RAM Usada: ' + formatSizeCompact(ctx.raw) } } } } });
+    const swapChart = new Chart('swapChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Swap Usada', data: [], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', pointBackgroundColor: '#10b981', borderWidth: 1.5 }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'SWAP Usada: ' + formatSizeCompact(ctx.raw) } } } } });
+    const networkChart = new Chart('networkChart', { type: 'line', data: { labels: [], datasets: [ { label: 'Subida (Mbps)', data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', pointBackgroundColor: '#06b6d4', borderWidth: 1.5 }, { label: 'Bajada (Mbps)', data: [], borderColor: '#f59e42', backgroundColor: 'rgba(245,158,66,0.1)', pointBackgroundColor: '#f59e42', borderWidth: 1.5 }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Mbps' } } } } });
+    // --- FIN DE LA CORRECCIÓN: DEFINICIÓN DE GRÁFICAS ---
+
     function formatSizeCompact(bytes) { if (bytes === 0) return '0 B'; const units = ['B', 'KB', 'MB', 'GB']; const i = Math.floor(Math.log(bytes) / Math.log(1024)); return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1))} ${units[i]}`; }
     function parseSize(sizeStr) { if (!sizeStr) return { value: 0, unit: 'B' }; const parts = sizeStr.trim().split(' '); return { value: parseFloat(parts[0]) || 0, unit: parts.length > 1 ? parts[1].charAt(0) : 'B' }; }
     function sizeToBytes(sizeStr) { const { value, unit } = parseSize(sizeStr); const multipliers = { 'G': 1024 * 1024 * 1024, 'M': 1024 * 1024, 'K': 1024 }; return value * (multipliers[unit] || 1); }
     function updateRings(info) { const cpuPercent = parseFloat(info.cpu.usage.replace('%', '')); document.getElementById('cpu-ring').setAttribute('stroke-dasharray', `${cpuPercent},100`); document.getElementById('cpu-value').textContent = `${cpuPercent.toFixed(1)}%`; const ramUsedInfo = parseSize(info.ram.used); document.getElementById('ram-used').textContent = `${ramUsedInfo.value.toFixed(1)}${ramUsedInfo.unit}`; document.getElementById('ram-ring').setAttribute('stroke-dasharray', `${parseFloat(info.ram.percent.replace('%', ''))},100`); const swapUsedInfo = parseSize(info.swap.used); document.getElementById('swap-used').textContent = `${swapUsedInfo.value.toFixed(1)}${swapUsedInfo.unit}`; document.getElementById('swap-ring').setAttribute('stroke-dasharray', `${parseFloat(info.swap.percent.replace('%', '') || 0)},100`); }
-    function updateSystemInfo(info) { document.getElementById('hostname').textContent = info.hostname; document.getElementById('ip-addresses').innerHTML = info.ips.map(ip => ip.ip).join('<br>'); document.getElementById('os-info').textContent = info.os; document.getElementById('uptime').textContent = info.uptime; document.getElementById('local-time').textContent = info.local_time; }
+    
+    function updateSystemInfo(info) {
+        document.getElementById('hostname').textContent = info.hostname;
+        document.getElementById('ip-addresses').innerHTML = info.ips.map(ip => ip.ip).join('<br>');
+        document.getElementById('os-info').textContent = info.os;
+        document.getElementById('uptime').textContent = info.uptime;
+
+        // --- INICIO DE LA CORRECCIÓN: FORMATO DE HORA ---
+        // Se formatea la fecha/hora completa a un formato de 12h con AM/PM usando el locale 'es-ES'.
+        if (info.local_time) {
+            document.getElementById('local-time').textContent = new Date(info.local_time).toLocaleTimeString('es-ES', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+        // --- FIN DE LA CORRECCIÓN: FORMATO DE HORA ---
+    }
+    
     function updateCard(statId, value, isSize = false) { const element = document.querySelector(`[data-stat="${statId}"]`); if (!element) return; let formattedValue = value; if (isSize) { const bytes = parseFloat(value); formattedValue = (bytes / (1024 * 1024) < 1) ? `${Math.round(bytes / 1024)} MB` : `${(bytes / (1024 * 1024)).toFixed(2)} GB`; } if (element.textContent !== formattedValue.toString()) { element.textContent = formattedValue; element.classList.add('value-change'); setTimeout(() => element.classList.remove('value-change'), 1000); } }
     function updateCacheStats(stats) { updateCard('entradas_almacenadas', stats.store_entries); updateCard('uso_de_capacidad', stats.capacity_used); updateCard('espacio_total', stats.fs_space_total, true); updateCard('espacio_usado', stats.fs_space_used, true); updateCard('eliminación', stats.removal_policy); updateCard('edad_lru', `${stats.lru_age_days} días`); }
 
@@ -346,6 +387,18 @@
     });
 
     document.addEventListener('DOMContentLoaded', function() {
+        // --- INICIO DE LA CORRECCIÓN: FORMATO DE HORA INICIAL ---
+        // Se formatea el valor inicial de la hora local que fue renderizado por el servidor.
+        const localTimeElement = document.getElementById('local-time');
+        if (localTimeElement && localTimeElement.textContent.trim()) {
+            localTimeElement.textContent = new Date(localTimeElement.textContent).toLocaleTimeString('es-ES', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+        // --- FIN DE LA CORRECCIÓN: FORMATO DE HORA INICIAL ---
+
         maxRamBytes = sizeToBytes("{{ system_info.ram.total }}");
         maxSwapBytes = sizeToBytes("{{ system_info.swap.total }}");
         ramChart.options.scales.y.max = maxRamBytes;

@@ -1,5 +1,3 @@
-{# Este fichero es una plantilla parcial que se carga en la página principal. #}
-
 {# Bloque para filtrar usuarios no válidos o anónimos #}
 {% set valid_users = {} %}
 {% for user, user_data in grouped_connections.items() %}
@@ -14,7 +12,7 @@
     <div class="flex justify-center mb-8">
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-6xl">
             
-            {# --- MODIFICADO: Tarjeta de información del Servidor Squid --- #}
+            {# ---  Tarjeta de información del Servidor Squid --- #}
             <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
                 <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center mr-4 flex-shrink-0">
                     <i class="fas fa-server text-indigo-500 text-xl"></i>
@@ -25,7 +23,7 @@
                 </div>
             </div>
             
-            {# --- MODIFICADO: Tarjeta de estado del Proxy Padre --- #}
+            {# --- Tarjeta de estado del Proxy Padre --- #}
             {% if parent_proxy_ip %}
             {# Estado Con Padre #}
             <div class="bg-white p-4 rounded-lg shadow flex items-center transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-0.5">
@@ -81,13 +79,15 @@
     </div>
 
     {% if valid_users|length > 0 %}
+
+    {# Si hay usuarios, se muestra el botón 'Ver Resumen'. #}
     <div class="flex justify-end mb-4">
         <button id="toggle-all-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
             Ver Resumen
         </button>
     </div>
-    {% endif %}
 
+    {# Se inicia el bucle para mostrar la lista de usuarios y sus conexiones. #}
     <div id="user-accordion-group">
     {% for user, user_data in valid_users.items() %}
     
@@ -204,4 +204,22 @@
     </div>
     {% endfor %}
     </div>
+
+    {# Si la condición del 'if' no se cumple (no hay usuarios), se ejecuta este bloque. #}
+    {% else %}
+    
+    {# Este es el contenedor para el mensaje de 'sin actividad'. #}
+    {# Se muestra centrado y con un estilo visual que indica que es un estado vacío. #}
+    <div class="mt-10 text-center border-2 border-dashed border-gray-300 p-12 rounded-lg bg-white shadow-sm">
+        <div class="mx-auto w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
+             {# Icono para representar visualmente la falta de actividad. #}
+             <i class="fas fa-eye-slash text-4xl text-gray-400"></i>
+        </div>
+        <h3 class="mt-6 text-xl font-bold text-gray-800">No Hay Actividad Reciente</h3>
+        <p class="mt-2 text-sm text-gray-500">
+            En este momento no se han detectado conexiones de usuarios válidos.
+        </p>
+    </div>
+    {# Final del bloque 'else'. #}
+    {% endif %}
 </div>

@@ -30,7 +30,6 @@ from utils.updateSquidStats import updateSquidStats
 
 # ------------------- PAQUETES ESTÁNDAR -------------------
 from dotenv import load_dotenv
-# --- CORREGIDO: Se importa timezone para manejar timestamps de forma correcta ---
 from datetime import datetime, timezone
 import socket
 import sys
@@ -38,7 +37,7 @@ import os
 import logging
 import time
 from threading import Lock
-import psutil # Importado para el cálculo de red en el hilo
+import psutil 
 
 # ------------------- CONFIGURACIÓN -------------------
 class Config:
@@ -46,7 +45,7 @@ class Config:
 
 load_dotenv()
 
-# --- AÑADIDO: Función de utilidad para convertir tamaños a bytes ---
+# --- Función de utilidad para convertir tamaños a bytes ---
 def size_to_bytes(size_str):
     """Convierte un string como '2.5 GB' a bytes."""
     if not isinstance(size_str, str):
@@ -68,7 +67,6 @@ def size_to_bytes(size_str):
         return int(float(size_str.replace('B', '').strip()))
     except (ValueError, TypeError):
         return 0
-# --- FIN AÑADIDO ---
 
 
 # ------------------- INICIALIZACIÓN APP -------------------
