@@ -333,7 +333,6 @@ def cache_stats():
         logger.error(f"Error in /stats: {str(e)}")
         return render_template('error.html', message="Error retrieving cache statistics or system info"), 500
 
-# --- AÑADIDO: Nueva ruta API para servir el historial de métricas del día ---
 @app.route('/api/metrics/today')
 def get_today_metrics():
     db = None
@@ -350,13 +349,8 @@ def get_today_metrics():
 
         results = []
         for m in metrics:
-            # --- INICIO DE LA CORRECCIÓN ---
-            # El timestamp que viene de SQLite es "naive" (sin zona horaria).
-            # Le decimos a Python que debe tratarlo como si fuera UTC.
             aware_timestamp = m.timestamp.replace(tzinfo=timezone.utc)
             
-            # Ahora, al convertirlo a ISO, incluirá la información de la zona horaria (+00:00 o Z),
-            # que es lo que JavaScript necesita para hacer la conversión local correctamente.
             results.append({
                 "timestamp": aware_timestamp.isoformat(),
                 "cpu_usage": m.cpu_usage,
@@ -365,7 +359,6 @@ def get_today_metrics():
                 "net_sent_bytes_sec": m.net_sent_bytes_sec,
                 "net_recv_bytes_sec": m.net_recv_bytes_sec,
             })
-            # --- FIN DE LA CORRECCIÓN ---
             
         return jsonify(results)
     except Exception as e:
@@ -374,7 +367,6 @@ def get_today_metrics():
     finally:
         if db:
             db.close()
-# --- FIN AÑADIDO ---
 
 
 # ------------------- VISTA DE LOGS DE USUARIOS -------------------

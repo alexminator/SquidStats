@@ -218,7 +218,7 @@ ExecStart=/opt/squidstats/venv/bin/python3 /opt/squidstats/app.py
 Restart=always
 RestartSec=5
 EnvironmentFile=/opt/squidstats/.env
-Environment=PATH=/opt/squidstats/venv/bin:$PATH
+Environment="PATH=/opt/squidstats/venv/bin:/usr/sbin:/usr/bin:/bin:$PATH"
 
 [Install]
 WantedBy=multi-user.target

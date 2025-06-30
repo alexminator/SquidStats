@@ -173,16 +173,16 @@
 <script>
     Chart.register(ChartDataLabels);
 
+    const DATA_INTERVAL_SECONDS = 5; 
+    const LABEL_INTERVAL_MINUTES = 10; 
+    const pointsPerLabel = (LABEL_INTERVAL_MINUTES * 60) / DATA_INTERVAL_SECONDS;
+
     let maxRamBytes = 0, maxSwapBytes = 0;
     const historySize = 720; 
 
     let lastUpdateTime = new Date();
 
-    // --- CORREGIDO: --- Se reemplaza la función manual por el método nativo y fiable del navegador.
-    // Esto asegura que la conversión de UTC a la hora local del usuario se realice siempre correctamente.
     function formatTime(date) {
-        // Usamos toLocaleString para que el navegador se encargue de la conversión de zona horaria.
-        // 'en-US' se usa para el formato (ej. 2:15 PM), pero la zona horaria será la de tu sistema.
         return date.toLocaleString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
@@ -216,14 +216,47 @@
             document.querySelectorAll('.tab-content')[index].classList.add('active');
         });
     });
+
     const chartOptions = {
         responsive: true, maintainAspectRatio: false, tension: 0.3, fill: true, pointRadius: 2,
         scales: {
-            x: { grid: { color: 'rgba(0, 0, 0, 0.05)' } },
-            y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.05)' } }
+            x: {
+                grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                ticks: {
+                    // La función 'callback' decide qué etiqueta mostrar.
+                    callback: function(value, index, ticks) {
+                        // --- INICIO DE LA CORRECCIÓN ---
+                        // Se comprueba si el punto actual es el último en la gráfica.
+                        // 'ticks' es el array de todas las posibles etiquetas.
+                        const isLastPoint = index === ticks.length - 1;
+
+                        // Se muestra una etiqueta si:
+                        // 1. El índice es un múltiplo de nuestro intervalo (cada 10 mins).
+                        // 2. O si es el último punto de datos (para asegurar que se vea la hora actual).
+                        if (index % pointsPerLabel === 0 || isLastPoint) {
+                            return this.getLabelForValue(value);
+                        }
+                        
+                        // Para todas las demás, se retorna null para ocultarlas.
+                        return null; 
+                        // --- FIN DE LA CORRECCIÓN ---
+                    },
+                    autoSkip: false,
+                    maxRotation: 0,
+                    minRotation: 0
+                }
+            },
+            y: { 
+                beginAtZero: true, 
+                grid: { color: 'rgba(0, 0, 0, 0.05)' } 
+            }
         },
-        plugins: { legend: { display: true }, datalabels: { display: false } }
+        plugins: { 
+            legend: { display: true }, 
+            datalabels: { display: false } 
+        }
     };
+
     const cpuChart = new Chart('cpuChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Uso de CPU (%)', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', pointBackgroundColor: '#ef4444' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, max: 100, title: { display: true, text: '%' } } } } });
     const ramChart = new Chart('ramChart', { type: 'line', data: { labels: [], datasets: [{ label: 'RAM Usada', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', pointBackgroundColor: '#3b82f6' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'RAM Usada: ' + formatSizeCompact(ctx.raw) } } } } });
     const swapChart = new Chart('swapChart', { type: 'line', data: { labels: [], datasets: [{ label: 'Swap Usada', data: [], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', pointBackgroundColor: '#10b981' }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, y: { ...chartOptions.scales.y, title: { display: true, text: 'Bytes' }, ticks: { callback: formatSizeCompact } } }, plugins: { ...chartOptions.plugins, tooltip: { callbacks: { label: ctx => 'SWAP Usada: ' + formatSizeCompact(ctx.raw) } } } } });
