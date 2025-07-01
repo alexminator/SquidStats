@@ -3,10 +3,18 @@
 import re
 from collections import defaultdict
 
-# --- MODIFICACIÓN ---
-# Se ha renombrado 'remote' a 'client_ip' para que el nombre sea más descriptivo.
-# 'client_ip' corresponde a la IP del usuario que hace la petición.
-# 'proxy_local_ip' es la IP que usa el proxy para esa conexión específica.
+# ==============================================================================
+# NOTA IMPORTANTE SOBRE LA FUENTE DE DATOS
+#
+# Este parser procesa la salida del comando de Squid `mgr:client_list`.
+# Esta fuente de datos SOLO muestra conexiones activas y persistentes en un
+# momento dado (ej. un túnel HTTPS con estado TCP_TUNNEL).
+#
+# NO CONTIENE eventos de transacción instantáneos como TCP_DENIED o TCP_MISS.
+# Esos estados solo se registran en el fichero `access.log` y son procesados
+# por los parsers en `log.py` para la vista de actividad histórica.
+# ==============================================================================
+
 REGEX_MAP = {
     "fd": re.compile(r"FD (\d+)"),
     "uri": re.compile(r"uri (.+)"),
@@ -23,7 +31,7 @@ REGEX_MAP = {
 }
 
 def parse_raw_data(raw_data):
-    """Analiza datos crudos de Squid y retorna conexiones estructuradas"""
+    """Analiza datos crudos de conexiones activas de Squid y retorna una lista de conexiones estructuradas."""
     connections = []
     # Se ignora el primer elemento vacío que resulta del split
     blocks = raw_data.split("Connection:")[1:]
@@ -34,19 +42,19 @@ def parse_raw_data(raw_data):
             connections.append(connection)
         except Exception as e:
             # Imprime un error pero permite que el script continúe
-            print(f"Error parseando bloque: {e}\n{block[:100]}...")
+            print(f"Error parseando bloque de conexión activa: {e}\n{block[:100]}...")
     
     return connections
 
 def parse_connection_block(block):
-    """Procesa un bloque individual de conexión"""
+    """Procesa un bloque individual de conexión activa."""
     conn = {}
     
     # Extraer campos usando el mapa de expresiones regulares
     for key, regex in REGEX_MAP.items():
         if key not in ["fd_read", "fd_wrote", "nrequests", "delay_pool", "fd_total"]:
             match = regex.search(block)
-            conn[key] = match.group(1) if match else "N/A"
+            conn[key] = match.group(1).strip() if match else "N/A"
     
     # Manejo específico para campos numéricos
     conn["fd_read"] = int(REGEX_MAP["fd_read"].search(block).group(1)) if REGEX_MAP["fd_read"].search(block) else 0
@@ -56,9 +64,7 @@ def parse_connection_block(block):
     conn["nrequests"] = int(REGEX_MAP["nrequests"].search(block).group(1)) if REGEX_MAP["nrequests"].search(block) else 0
     conn["delay_pool"] = int(REGEX_MAP["delay_pool"].search(block).group(1)) if REGEX_MAP["delay_pool"].search(block) else "N/A"
     
-    # --- AÑADIDO ---
     # Limpiamos el puerto de la IP del cliente para una visualización más limpia en la UI.
-    # Por ejemplo, de "192.168.33.31:54879" pasará a ser "192.168.33.31".
     if conn.get("client_ip") and ":" in conn["client_ip"]:
         conn["client_ip"] = conn["client_ip"].split(":")[0]
         
@@ -66,16 +72,10 @@ def parse_connection_block(block):
 
 def group_by_user(connections):
     """
-    Agrupa conexiones por usuario.
-    --- CAMBIO CLAVE ---
-    La estructura de datos devuelta ahora es un diccionario anidado.
-    Esto nos permite almacenar la IP del cliente junto con su lista de conexiones.
-    Formato de salida: {'nombre_usuario': {'client_ip': '192.168.1.10', 'connections': [...]}}
+    Agrupa las conexiones activas por nombre de usuario.
+    Filtra los usuarios no identificados (con username '-', 'N/A', etc.).
     """
-    ANONYMOUS_INDICATORS = {
-        None, "", "-", "Anónimo", "N/A", "anonymous", "Anonymous", 
-        "unknown", "guest", "none", "null"
-    }
+    ANONYMOUS_INDICATORS = {"-", "N/A", "", "anonymous", "unknown", "guest"}
     
     # Usamos defaultdict para inicializar automáticamente la estructura anidada.
     grouped = defaultdict(lambda: {"client_ip": "No disponible", "connections": []})
@@ -83,21 +83,11 @@ def group_by_user(connections):
     for connection in connections:
         user = connection.get("username")
         
-        # --- Lógica de filtrado de usuarios anónimos (robusta) ---
-        if user is None:
-            continue
-        if not isinstance(user, str):
-            user = str(user)
-        user_normalized = user.strip().lower()
-        is_anonymous = (
-            not user_normalized or
-            user_normalized in (indicator.lower() for indicator in ANONYMOUS_INDICATORS if indicator is not None)
-        )
-        if is_anonymous:
+        # Si el usuario no es válido o es un indicador de anónimo, se ignora la conexión.
+        if not user or user in ANONYMOUS_INDICATORS:
             continue
        
-        # Si es la primera vez que vemos a este usuario en este lote,
-        # guardamos su IP. Tomamos la de la primera conexión encontrada.
+        # Si es la primera vez que vemos a este usuario, guardamos su IP.
         if not grouped[user]["connections"]:
             grouped[user]["client_ip"] = connection.get("client_ip", "No disponible")
             

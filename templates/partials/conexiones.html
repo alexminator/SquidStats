@@ -1,6 +1,7 @@
 {# Bloque para filtrar usuarios no válidos o anónimos #}
 {% set valid_users = {} %}
 {% for user, user_data in grouped_connections.items() %}
+    {# Esta validación es ahora redundante si connections.py ya filtra, pero no hace daño mantenerla por seguridad. #}
     {% if user and user != "-" and user != "Anónimo" %}
         {% set _ = valid_users.update({user: user_data}) %}
     {% endif %}
@@ -67,7 +68,7 @@
                         <i class="fas fa-exchange-alt text-green-500 text-xl"></i>
                     </div>
                     <div>
-                        <p class="text-gray-500 text-sm">Conexiones Totales</p>
+                        <p class="text-gray-500 text-sm">Conexiones Activas</p>
                         <p class="text-2xl font-bold">
                             {% set total = namespace(value=0) %}
                             {% for user_data in valid_users.values() %}
@@ -81,7 +82,7 @@
         </div>
 
         {% if valid_users|length > 0 %}
-        {# Si hay usuarios, se muestra el botón 'Ver Resumen'. Este botón también queda fijo al estar dentro del contenedor 'sticky'. #}
+        {# Si hay usuarios, se muestra el botón 'Ver Resumen'. #}
         <div class="flex justify-end mb-4">
             <button id="toggle-all-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
                 Ver Resumen
@@ -89,12 +90,10 @@
         </div>
         {% endif %}
     </div>
-    {# --- FIN DE LA MODIFICACIÓN: CONTENEDOR FIJO --- #}
 
 
     {# El resto del contenido, como la lista de usuarios, se desplazará normalmente por debajo del bloque fijo. #}
     {% if valid_users|length > 0 %}
-    {# Se inicia el bucle para mostrar la lista de usuarios y sus conexiones. #}
     <div id="user-accordion-group">
     {% for user, user_data in valid_users.items() %}
     
@@ -120,7 +119,7 @@
                         <span>{{ client_ip }}</span>
                     </div>
 
-                    <div class="flex items-center text-sm text-gray-600" title="Conexiones totales de este usuario">
+                    <div class="flex items-center text-sm text-gray-600" title="Conexiones activas de este usuario">
                         <i class="fas fa-link mr-1.5 text-blue-500"></i>
                         <span>{{ connections|length }} conexiones</span>
                     </div>
@@ -134,12 +133,12 @@
                         {% set total_requests.value = total_requests.value + connection.nrequests %}
                     {% endfor %}
                     
-                    <div class="flex items-center text-sm text-gray-600" title="Total de datos transferidos">
+                    <div class="flex items-center text-sm text-gray-600" title="Total de datos transferidos en conexiones activas">
                         <i class="fas fa-database mr-1.5 text-green-500"></i>
                         <span>{{ (total_data.value / 1024 / 1024)|round(2) }} MB</span>
                     </div>
                     
-                    <div class="flex items-center text-sm text-gray-600" title="Total de solicitudes">
+                    <div class="flex items-center text-sm text-gray-600" title="Total de solicitudes en conexiones activas">
                         <i class="fas fa-bullhorn mr-1.5 text-purple-500"></i>
                         <span>{{ total_requests.value }} solicitudes</span>
                     </div>
@@ -179,7 +178,13 @@
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 {% set method = connection.logType|lower %}
-                                <span class="px-2 py-1 rounded-full text-xs font-semibold ... {% if method == 'connect' or method == 'tcp_tunnel' %}bg-green-100 text-green-800 ... {% endif %}">
+                                <span class="px-2 py-1 rounded-full text-xs font-semibold
+                                    {% if method == 'connect' or method == 'tcp_tunnel' %}
+                                        bg-green-100 text-green-800
+                                    {% else %}
+                                        bg-gray-100 text-gray-800
+                                    {% endif %}
+                                ">
                                     {{ connection.logType }}
                                 </span>
                             </td>
@@ -215,18 +220,14 @@
     {# Si la condición del 'if' no se cumple (no hay usuarios), se ejecuta este bloque. #}
     {% else %}
     
-    {# Este es el contenedor para el mensaje de 'sin actividad'. #}
-    {# Se muestra centrado y con un estilo visual que indica que es un estado vacío. #}
     <div class="mt-10 text-center border-2 border-dashed border-gray-300 p-12 rounded-lg bg-white shadow-sm">
         <div class="mx-auto w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
-             {# Icono para representar visualmente la falta de actividad. #}
              <i class="fas fa-eye-slash text-4xl text-gray-400"></i>
         </div>
         <h3 class="mt-6 text-xl font-bold text-gray-800">No Hay Actividad Reciente</h3>
         <p class="mt-2 text-sm text-gray-500">
-            En este momento no se han detectado conexiones de usuarios válidos.
+            En este momento no se han detectado conexiones activas de usuarios válidos.
         </p>
     </div>
-    {# Final del bloque 'else'. #}
     {% endif %}
 </div>
