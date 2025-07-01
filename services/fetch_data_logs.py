@@ -1,7 +1,7 @@
 import re
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
-from sqlalchemy import func
+from sqlalchemy import func, or_
 import sys
 from pathlib import Path
 from datetime import datetime, date
@@ -17,7 +17,6 @@ current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
 sys.path.append(str(project_root))
 
-# Se importa el gestor de modelos unificado de database.py
 from database.database import get_session, get_dynamic_models
 
 DATE_SUFFIX_PATTERN = re.compile(r'^\d{8}$')
@@ -26,9 +25,12 @@ def validate_date_suffix(date_suffix: str) -> bool:
     """Valida que el sufijo de fecha tenga el formato correcto"""
     return bool(DATE_SUFFIX_PATTERN.match(date_suffix))
 
-def get_users_logs(db: Session, date_suffix: Optional[str] = None, page: int = 1, per_page: int = 15) -> Dict[str, Any]:
+# --- INICIO DE LA MODIFICACIÓN ---
+# La firma de la función ahora incluye 'search_query' para filtrar por nombre de usuario.
+def get_users_logs(db: Session, date_suffix: Optional[str] = None, page: int = 1, per_page: int = 15, search_query: Optional[str] = None) -> Dict[str, Any]:
     """
     Obtiene usuarios y sus logs para la fecha actual o una fecha específica de forma paginada.
+    Ahora también filtra por nombre de usuario si se proporciona un 'search_query'.
     """       
     try:
         if not date_suffix:
@@ -38,30 +40,37 @@ def get_users_logs(db: Session, date_suffix: Optional[str] = None, page: int = 1
             logger.error(f"Sufijo de fecha inválido: {date_suffix}")
             return {"users": [], "total": 0, "page": page, "per_page": per_page, "total_pages": 0}
         
-        # Se usa el gestor de modelos unificado para obtener las clases de tabla correctas
         UserModel, LogModel = get_dynamic_models(date_suffix)
         
         if not UserModel or not LogModel:
             logger.warning(f"Tablas dinámicas no disponibles para la fecha {date_suffix}")
             return {"users": [], "total": 0, "page": page, "per_page": per_page, "total_pages": 0}
         
-        # Contar total de usuarios distintos para la paginación
-        total = db.query(UserModel).filter(UserModel.username != "-").count()
+        # Se construye la consulta base.
+        query = db.query(UserModel).filter(UserModel.username != "-")
+        
+        # Se añade el filtro de búsqueda si existe un 'search_query'.
+        # Se usa 'ilike' para una búsqueda insensible a mayúsculas/minúsculas.
+        if search_query:
+            query = query.filter(UserModel.username.ilike(f'%{search_query}%'))
+            
+        # El conteo total de usuarios se hace SOBRE la consulta ya filtrada.
+        total = query.count()
         total_pages = (total + per_page - 1) // per_page if per_page > 0 else 0
         
         offset = (page - 1) * per_page
         
-        # 1. Obtener solo la página de usuarios que se va a mostrar
-        users = db.query(UserModel).filter(UserModel.username != "-").order_by(UserModel.username).offset(offset).limit(per_page).all()
+        # 1. Se obtienen los usuarios de la página actual, respetando el filtro y la paginación.
+        users = query.order_by(UserModel.username).offset(offset).limit(per_page).all()
+        # --- FIN DE LA MODIFICACIÓN ---
+        
         user_ids = [u.id for u in users]
 
-        # Crear un mapa para ensamblar los datos
         users_map = {u.id: {
             "user_id": u.id, "username": u.username, "ip": u.ip, 
             "logs": [], "total_requests": 0, "total_data": 0
         } for u in users}
 
-        # Si no hay usuarios en esta página, devolver resultado vacío
         if not user_ids:
             return {"users": [], "total": total, "page": page, "per_page": per_page, "total_pages": total_pages}
 
@@ -99,12 +108,10 @@ def get_users_with_logs_by_date(db: Session, date_suffix: str) -> List[Dict[str,
     """
     Obtiene usuarios y sus logs para una fecha específica (wrapper para la función paginada)
     """
-    # Validar sufijo de fecha
     if not validate_date_suffix(date_suffix):
         logger.error(f"Sufijo de fecha inválido: {date_suffix}")
         return []
     
-    # Llama a la función principal sin paginación (o con paginación por defecto muy alta si es necesario)
     return get_users_logs(db, date_suffix, page=1, per_page=10000)["users"]
 
 def get_metrics_for_date(selected_date: date):

@@ -71,16 +71,29 @@ def parse_log_line_pipe_format(line):
     if len(parts) < 14:
         return None
     try:
+        hierarchy = parts[13]
+        
+        # --- INICIO DE LA MODIFICACIÓN: Capturar TCP_DENIED ---
+        # Se procesan las líneas TCP_DENIED aunque el método no sea estándar o el usuario sea '-'.
+        # Esto es crucial para registrar los intentos de acceso a sitios bloqueados.
+        if "TCP_DENIED" in hierarchy:
+            return {
+                'ip': parts[1],
+                'username': parts[3],  # Se acepta el usuario '-' para logs denegados
+                'url': parts[6],
+                'response': 403,  # TCP_DENIED es funcionalmente un 403 Forbidden
+                'data_transmitted': int(parts[9]),
+                'parent_ip': None, # No aplica en este contexto
+                'hierarchy': hierarchy
+            }
+        # --- FIN DE LA MODIFICACIÓN ---
+
+        # Lógica original para el resto de logs que no son denegados
         username = parts[3]
         method = parts[5]
-        if username == '-' or "TCP_DENIED" in parts[13] or method not in ("GET", "CONNECT", "POST"):
+        if username == '-' or method not in ("GET", "CONNECT", "POST"):
             return None
 
-        # --- Lógica de Detección ---
-        # El código de jerarquía (ej. TCP_TUNNEL/HIER_DIRECT) está en la posición 13
-        hierarchy = parts[13]
-        # Si la jerarquía contiene "PARENT", la IP del padre está en la posición 11.
-        # Si no (como en HIER_DIRECT), parent_ip será None.
         parent_ip = parts[11] if "PARENT" in hierarchy else None
 
         return {
@@ -96,7 +109,26 @@ def parse_log_line_pipe_format(line):
 def parse_log_line_space_format(line):
     try:
         parts = line.split()
-        if len(parts) < 10 or parts[7] == '-' or "TCP_DENIED" in line:
+        if len(parts) < 10:
+            return None
+        
+        # --- INICIO DE LA MODIFICACIÓN: Capturar TCP_DENIED ---
+        # Al igual que en el formato pipe, se añade una lógica para capturar
+        # explícitamente los logs de TCP_DENIED.
+        if "TCP_DENIED" in line:
+            return {
+                'ip': parts[2],
+                'username': parts[7], # Se acepta el usuario '-'
+                'url': parts[6],
+                'response': int(parts[8]),
+                'data_transmitted': int(parts[4]),
+                'parent_ip': None,
+                'hierarchy': parts[9]
+            }
+        # --- FIN DE LA MODIFICACIÓN ---
+
+        # Lógica original para el resto de logs
+        if parts[7] == '-':
             return None
         
         hierarchy = parts[9]
