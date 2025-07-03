@@ -13,7 +13,6 @@ sys.path.append(str(project_root))
 
 from database.database import get_session, get_engine
 
-
 def _get_tables_in_range(inspector, start_date: datetime, end_date: datetime) -> List[Tuple[str, str]]:
     """
     Función de ayuda para obtener una lista de tuplas (tabla_log, tabla_user)
@@ -34,6 +33,106 @@ def _get_tables_in_range(inspector, start_date: datetime, end_date: datetime) ->
         current_date += timedelta(days=1)
         
     return log_tables_in_range
+
+# --- INICIO DE LA MODIFICACIÓN ---
+# Se añade una función genérica para ejecutar consultas UNION y evitar repetir código.
+def _execute_union_query(db: Session, tables: List[Tuple[str, str]], where_clause: str, params: Dict, order_by: str) -> List[Any]:
+    """Ejecuta una consulta UNION ALL a través de múltiples tablas con un WHERE y ORDER BY dinámicos."""
+    select_clauses = []
+    for log_table, user_table in tables:
+        date_str = log_table.split('_')[1]
+        select_clauses.append(
+            f"SELECT u.username, u.ip, l.url, l.response, l.data_transmitted, '{date_str}' as log_date "
+            f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
+        )
+    
+    # Construir la consulta completa
+    full_query_str = f"""
+        SELECT username, ip, url, response, data_transmitted, log_date
+        FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
+        WHERE {where_clause}
+        ORDER BY {order_by}
+        LIMIT 500
+    """ # Se añade un límite de 500 para no sobrecargar el navegador.
+    
+    try:
+        return db.execute(text(full_query_str), params).fetchall()
+    except SQLAlchemyError as e:
+        print(f"Error en _execute_union_query: {e}")
+        raise # relanzar la excepción para que sea manejada por la función que llama
+
+def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, username: str = None) -> Dict[str, Any]:
+    """Busca URLs que contengan una palabra clave."""
+    start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
+    inspector = inspect(db.get_bind())
+    tables = _get_tables_in_range(inspector, start_date, end_date)
+    if not tables: return {"error": "No hay datos para las fechas seleccionadas."}
+    
+    where_clause = "url LIKE :keyword"
+    params = {'keyword': f'%{keyword}%'}
+    if username:
+        where_clause += " AND username = :username"
+        params['username'] = username
+        
+    results = _execute_union_query(db, tables, where_clause, params, "log_date DESC, username")
+    return {
+        "results": [dict(row._mapping) for row in results]
+    }
+
+def find_by_domain(db: Session, start_str: str, end_str: str, domain: str, username: str = None) -> Dict[str, Any]:
+    """Busca accesos a un dominio específico."""
+    # Reutiliza la función de palabra clave, ya que la lógica es idéntica
+    return find_by_keyword(db, start_str, end_str, domain, username)
+
+def find_file_downloads(db: Session, start_str: str, end_str: str, username: str = None) -> Dict[str, Any]:
+    """Busca descargas de ficheros potencialmente peligrosos."""
+    start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
+    inspector = inspect(db.get_bind())
+    tables = _get_tables_in_range(inspector, start_date, end_date)
+    if not tables: return {"error": "No hay datos para las fechas seleccionadas."}
+
+    extensions = ['.exe', '.zip', '.rar', '.bat', '.scr', '.msi']
+    like_conditions = " OR ".join([f"url LIKE :ext{i}" for i in range(len(extensions))])
+    where_clause = f"({like_conditions})"
+    params = {f'ext{i}': f'%{ext}' for i, ext in enumerate(extensions)}
+
+    if username:
+        where_clause += " AND username = :username"
+        params['username'] = username
+        
+    results = _execute_union_query(db, tables, where_clause, params, "log_date DESC, username")
+    return {"results": [dict(row._mapping) for row in results]}
+
+def find_by_ip(db: Session, start_str: str, end_str: str, ip_address: str) -> Dict[str, Any]:
+    """Busca toda la actividad desde una dirección IP específica."""
+    start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
+    inspector = inspect(db.get_bind())
+    tables = _get_tables_in_range(inspector, start_date, end_date)
+    if not tables: return {"error": "No hay datos para las fechas seleccionadas."}
+
+    where_clause = "ip = :ip_address"
+    params = {'ip_address': ip_address}
+    results = _execute_union_query(db, tables, where_clause, params, "log_date DESC")
+    return {"results": [dict(row._mapping) for row in results]}
+
+def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, username: str = None) -> Dict[str, Any]:
+    """Busca peticiones por un código de respuesta HTTP específico."""
+    start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
+    inspector = inspect(db.get_bind())
+    tables = _get_tables_in_range(inspector, start_date, end_date)
+    if not tables: return {"error": "No hay datos para las fechas seleccionadas."}
+
+    where_clause = "response = :code"
+    params = {'code': code}
+    if username:
+        where_clause += " AND username = :username"
+        params['username'] = username
+        
+    results = _execute_union_query(db, tables, where_clause, params, "log_date DESC, username")
+    return {"results": [dict(row._mapping) for row in results]}
+
+# ... (El resto de funciones como get_all_usernames, get_user_activity_summary, etc., permanecen igual) ...
+# --- FIN DE LA MODIFICACIÓN ---
 
 def get_all_usernames(db: Session) -> List[str]:
     """
@@ -133,16 +232,12 @@ def get_top_users_by_data(db: Session, start_str: str, end_str: str, limit: int 
     
     try:
         results = db.execute(full_query, {'limit': limit}).fetchall()
-        # --- INICIO DE LA MODIFICACIÓN ---
-        # Se convierte explícitamente el resultado a float() para asegurar que JSON
-        # lo serialize como un número y no como un string.
         top_users_list = [{
             "username": r.username, 
             "total_data_gb": float(round((r.total_data or 0) / (1024**3), 2))
         } for r in results]
         
         return {"top_users": top_users_list}
-        # --- FIN DE LA MODIFICACIÓN ---
     except SQLAlchemyError as e:
         return {"error": str(e)}
 
@@ -159,36 +254,11 @@ def find_denied_access(db: Session, start_str: str, end_str: str, username: str 
     if not tables:
         return {"error": "No hay datos para las fechas seleccionadas."}
 
-    select_clauses = []
-    for log_table, user_table in tables:
-        date_str = log_table.split('_')[1]
-        select_clauses.append(
-            f"SELECT u.username, l.url, '{date_str}' as log_date FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id WHERE l.response = 403"
-        )
-    
-    user_filter = ""
+    where_clause = "response = 403"
     params = {}
     if username:
-        user_filter = "WHERE username = :username"
+        where_clause += " AND username = :username"
         params['username'] = username
 
-    full_query = text(f"""
-        SELECT username, url, log_date
-        FROM ({ " UNION ALL ".join(select_clauses) }) as all_denied
-        {user_filter}
-        ORDER BY log_date DESC, username
-    """)
-
-    try:
-        results = db.execute(full_query, params).fetchall()
-        return {
-            "denied_access": [
-                {
-                    "date": datetime.strptime(r.log_date, "%Y%m%d").strftime("%Y-%m-%d"),
-                    "username": r.username, 
-                    "url": r.url
-                } for r in results
-            ]
-        }
-    except SQLAlchemyError as e:
-        return {"error": str(e)}
+    results = _execute_union_query(db, tables, where_clause, params, "log_date DESC, username")
+    return {"results": [dict(row._mapping) for row in results]}

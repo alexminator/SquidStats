@@ -31,10 +31,14 @@ from services.auditoria_service import (
     get_all_usernames,
     get_user_activity_summary,
     get_top_users_by_data,
-    find_denied_access
+    find_denied_access,
+    find_by_keyword,
+    find_by_domain,
+    find_file_downloads,
+    find_by_ip,
+    find_by_response_code
 )
 from flask import jsonify
-
 # ------------------- PAQUETES ESTÁNDAR -------------------
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -466,16 +470,14 @@ def update_web():
 
 # ------------------- VISTA DE AUDITORIAS -------------------
 @app.route('/auditoria', methods=['GET'])
-def blacklist_logs():
-    # --- MODIFICACIÓN: Esta ruta ahora renderiza la nueva página de auditoría ---
+def auditoria_logs():
     return render_template(
-        'auditor.html', # Este fichero contiene ahora la interfaz de auditoría
-        page_icon='magnifying-glass.ico', # Ícono actualizado
+        'auditor.html',
+        page_icon='magnifying-glass.ico',
         page_title='Centro de Auditoría'
     )
 
-# --- INICIO DE LA MODIFICACIÓN: NUEVOS ENDPOINTS PARA LA API DE AUDITORÍA ---
-
+# ... (código de /api/all-users existente) ...
 @app.route('/api/all-users', methods=['GET'])
 def api_get_all_users():
     """Endpoint para obtener una lista de todos los usuarios para los filtros del frontend."""
@@ -496,9 +498,16 @@ def api_run_audit():
     start_date = data.get('start_date')
     end_date = data.get('end_date')
     username = data.get('username')
-    
+    # --- INICIO DE LA MODIFICACIÓN: Leer los nuevos parámetros del formulario ---
+    keyword = data.get('keyword')
+    domain = data.get('domain')
+    ip_address = data.get('ip_address')
+    response_code = data.get('response_code')
+    # --- FIN DE LA MODIFICACIÓN ---
+
     db = get_session()
     try:
+        # --- INICIO DE LA MODIFICACIÓN: Lógica para llamar a las nuevas funciones ---
         if audit_type == 'user_summary':
             if not username: return jsonify({"error": "Se requiere un nombre de usuario."}), 400
             result = get_user_activity_summary(db, username, start_date, end_date)
@@ -506,13 +515,30 @@ def api_run_audit():
             result = get_top_users_by_data(db, start_date, end_date)
         elif audit_type == 'denied_access':
             result = find_denied_access(db, start_date, end_date, username)
+        elif audit_type == 'keyword_search':
+            if not keyword: return jsonify({"error": "Se requiere una palabra clave."}), 400
+            result = find_by_keyword(db, start_date, end_date, keyword, username)
+        elif audit_type == 'domain_access':
+            if not domain: return jsonify({"error": "Se requiere un dominio."}), 400
+            result = find_by_domain(db, start_date, end_date, domain, username)
+        elif audit_type == 'file_download_search':
+            result = find_file_downloads(db, start_date, end_date, username)
+        elif audit_type == 'ip_activity':
+            if not ip_address: return jsonify({"error": "Se requiere una dirección IP."}), 400
+            result = find_by_ip(db, start_date, end_date, ip_address)
+        elif audit_type == 'response_code_search':
+            if not response_code: return jsonify({"error": "Se requiere un código de respuesta."}), 400
+            result = find_by_response_code(db, start_date, end_date, int(response_code), username)
         else:
             return jsonify({"error": "Tipo de auditoría no válido."}), 400
+        # --- FIN DE LA MODIFICACIÓN ---
         
         return jsonify(result)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Imprimir el error en el log del servidor para depuración
+        print(f"Error en la API de auditoría: {e}")
+        return jsonify({"error": "Ocurrió un error interno en el servidor."}), 500
     finally:
         db.close()
 

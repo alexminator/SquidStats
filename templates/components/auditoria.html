@@ -15,17 +15,46 @@
             <div>
                 <label for="audit-type" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Auditoría</label>
                 <select id="audit-type" name="audit_type" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <option value="user_summary">Resumen por Usuario</option>
-                    <option value="top_users_data">Top 10 Usuarios (Datos)</option>
-                    <option value="denied_access">Accesos Denegados</option>
+                    <optgroup label="Actividad General">
+                        <option value="user_summary" data-requires="user">Resumen por Usuario</option>
+                        <option value="top_users_data">Top 10 Usuarios (Datos)</option>
+                    </optgroup>
+                    <optgroup label="Seguridad y Políticas">
+                        <option value="denied_access" data-requires="user_optional">Accesos Denegados (403)</option>
+                        <option value="keyword_search" data-requires="user_optional,keyword">Búsqueda por Palabra Clave</option>
+                        <option value="domain_access" data-requires="user_optional,domain">Acceso a Dominio Específico</option>
+                        <option value="file_download_search" data-requires="user_optional">Búsqueda de Descargas (.exe, .zip)</option>
+                    </optgroup>
+                     <optgroup label="Auditoría Técnica">
+                        <option value="ip_activity" data-requires="ip">Actividad por Dirección IP</option>
+                        <option value="response_code_search" data-requires="user_optional,response_code">Análisis por Código de Respuesta</option>
+                    </optgroup>
                 </select>
             </div>
 
-            <div id="user-filter-container">
-                <label for="username-filter" class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
-                <select id="username-filter" name="username" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <option value="">-- Todos los usuarios --</option>
-                </select>
+            <div id="conditional-inputs" class="contents">
+                <div id="user-filter-container" class="conditional-input">
+                    <label for="username-filter" class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+                    <select id="username-filter" name="username" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">-- Todos --</option>
+                    </select>
+                </div>
+                <div id="keyword-input-container" class="conditional-input" style="display: none;">
+                    <label for="keyword-input" class="block text-sm font-medium text-gray-700 mb-1">Palabra Clave</label>
+                    <input type="text" id="keyword-input" name="keyword" class="w-full border-gray-300 rounded-md shadow-sm" placeholder="Ej: juegos, descargas...">
+                </div>
+                <div id="domain-input-container" class="conditional-input" style="display: none;">
+                    <label for="domain-input" class="block text-sm font-medium text-gray-700 mb-1">Dominio</label>
+                    <input type="text" id="domain-input" name="domain" class="w-full border-gray-300 rounded-md shadow-sm" placeholder="Ej: facebook.com">
+                </div>
+                 <div id="ip-input-container" class="conditional-input" style="display: none;">
+                    <label for="ip-input" class="block text-sm font-medium text-gray-700 mb-1">Dirección IP</label>
+                    <input type="text" id="ip-input" name="ip_address" class="w-full border-gray-300 rounded-md shadow-sm" placeholder="Ej: 192.168.1.100">
+                </div>
+                <div id="response-code-input-container" class="conditional-input" style="display: none;">
+                    <label for="response-code-input" class="block text-sm font-medium text-gray-700 mb-1">Código HTTP</label>
+                    <input type="number" id="response-code-input" name="response_code" class="w-full border-gray-300 rounded-md shadow-sm" placeholder="Ej: 404, 503">
+                </div>
             </div>
 
             <div>
@@ -37,7 +66,7 @@
                 <input type="date" id="end-date" name="end_date" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
             </div>
 
-            <div class="lg:col-start-4">
+            <div class="lg:col-span-4 self-end">
                 <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 flex items-center justify-center">
                     <i class="fas fa-play mr-2"></i>
                     Generar Reporte
@@ -60,19 +89,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('audit-form');
     const resultsContainer = document.getElementById('audit-results-container');
     const auditTypeSelect = document.getElementById('audit-type');
-    const userFilterContainer = document.getElementById('user-filter-container');
     const usernameSelect = document.getElementById('username-filter');
     const startDateInput = document.getElementById('start-date');
     const endDateInput = document.getElementById('end-date');
 
-    // Inicializar fechas por defecto (últimos 7 días)
+    const conditionalInputs = {
+        user: document.getElementById('user-filter-container'),
+        user_optional: document.getElementById('user-filter-container'),
+        keyword: document.getElementById('keyword-input-container'),
+        domain: document.getElementById('domain-input-container'),
+        ip: document.getElementById('ip-input-container'),
+        response_code: document.getElementById('response-code-input-container')
+    };
+
     const today = new Date();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(today.getDate() - 7);
     startDateInput.value = sevenDaysAgo.toISOString().split('T')[0];
     endDateInput.value = today.toISOString().split('T')[0];
 
-    // Cargar usuarios en el dropdown
     fetch('/api/all-users')
         .then(response => response.json())
         .then(users => {
@@ -84,43 +119,52 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-    // Mostrar/ocultar filtro de usuario según el tipo de auditoría
-    auditTypeSelect.addEventListener('change', function() {
-        if (this.value === 'user_summary') {
-            userFilterContainer.style.display = 'block';
-        } else if (this.value === 'denied_access') {
-             userFilterContainer.style.display = 'block'; // También se puede filtrar por usuario
-        } else {
-            userFilterContainer.style.display = 'none';
-        }
-    });
+    function toggleConditionalInputs() {
+        Object.values(conditionalInputs).forEach(input => input.style.display = 'none');
+        
+        const selectedOption = auditTypeSelect.options[auditTypeSelect.selectedIndex];
+        const required = selectedOption.dataset.requires?.split(',') || [];
 
-    // Manejar envío del formulario
+        required.forEach(inputId => {
+            if (conditionalInputs[inputId]) {
+                conditionalInputs[inputId].style.display = 'block';
+            }
+        });
+
+        const userOptional = required.includes('user_optional');
+        conditionalInputs.user.querySelector('select option[value=""]').disabled = !userOptional;
+        if (!userOptional) {
+            conditionalInputs.user.querySelector('select').selectedIndex = 0;
+        }
+    }
+
+    auditTypeSelect.addEventListener('change', toggleConditionalInputs);
+    toggleConditionalInputs(); 
+
     form.addEventListener('submit', function(event) {
         event.preventDefault();
         
         const formData = new FormData(form);
-        const data = {
-            audit_type: formData.get('audit_type'),
-            start_date: formData.get('start_date'),
-            end_date: formData.get('end_date'),
-            username: formData.get('audit_type') === 'user_summary' || formData.get('username') ? formData.get('username') : null
-        };
+        const data = Object.fromEntries(formData.entries());
 
-        // Validar que el usuario esté seleccionado si es necesario
-        if (data.audit_type === 'user_summary' && !data.username) {
-            alert('Por favor, seleccione un usuario para este tipo de auditoría.');
+        const selectedOption = auditTypeSelect.options[auditTypeSelect.selectedIndex];
+        const requiredInputs = selectedOption.dataset.requires?.split(',') || [];
+        
+        if (requiredInputs.includes('user') && !data.username) {
+            alert('Por favor, seleccione un usuario.');
+            return;
+        }
+        if (requiredInputs.includes('keyword') && !data.keyword) {
+            alert('Por favor, ingrese una palabra clave.');
             return;
         }
 
-        // Mostrar estado de carga
         resultsContainer.innerHTML = `
             <div class="text-center text-gray-500 py-10">
                 <i class="fas fa-spinner fa-spin text-5xl mb-4 text-blue-500"></i>
                 <h3 class="text-xl font-semibold">Generando reporte...</h3>
             </div>`;
         
-        // Llamada a la API
         fetch('/api/run-audit', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -131,7 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
             renderResults(data.audit_type, result);
         })
         .catch(error => {
-            resultsContainer.innerHTML = `<div class="text-center text-red-500 py-10"><strong>Error:</strong> ${error}</div>`;
+            resultsContainer.innerHTML = `<div class="text-center text-red-500 py-10"><strong>Error de red o del servidor:</strong> ${error}</div>`;
         });
     });
 
@@ -142,32 +186,78 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         let html = '';
-        switch(auditType) {
-            case 'user_summary':
-                html = renderUserSummary(data);
-                break;
-            case 'top_users_data':
-                html = renderTopUsers(data);
-                break;
-            case 'denied_access':
-                html = renderDeniedAccess(data);
-                break;
+        if (auditType === 'user_summary') {
+            html = renderUserSummary(data);
+        } else if (auditType === 'top_users_data') {
+            html = renderTopUsers(data);
+        } else if (['denied_access', 'keyword_search', 'domain_access', 'file_download_search', 'ip_activity', 'response_code_search'].includes(auditType)) {
+            const titles = {
+                denied_access: "Registros de Acceso Denegado (403)",
+                keyword_search: "Resultados de Búsqueda por Palabra Clave",
+                domain_access: "Resultados de Búsqueda por Dominio",
+                file_download_search: "Resultados de Búsqueda de Descargas",
+                ip_activity: "Resultados de Búsqueda por IP",
+                response_code_search: "Resultados por Código de Respuesta"
+            };
+            html = renderGenericTable(titles[auditType], data.results);
+        } else {
+            html = '<p>Tipo de reporte no reconocido.</p>';
         }
+
         resultsContainer.innerHTML = html;
 
-        // Si hay un canvas para el gráfico, lo renderizamos
         const chartCanvas = document.getElementById('domain-chart');
         if (chartCanvas && data.top_domains) {
             renderDomainChart(chartCanvas, data.top_domains);
         }
     }
 
+    // --- INICIO DE LA MODIFICACIÓN: Corrección del error de JavaScript ---
+    function renderGenericTable(title, results) {
+        if (!results || results.length === 0) {
+            return `<h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros para los filtros seleccionados.</p>`;
+        }
+        const rows = results.map(item => {
+            // El backend envía la fecha como 'YYYYMMDD'. La formateamos en JavaScript.
+            const dateStr = item.log_date; // ej: "20250703"
+            // Se usa substring para extraer año, mes y día, y se unen con guiones.
+            const formattedDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+            
+            return `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 text-sm">${formattedDate}</td>
+                <td class="p-2 font-medium text-sm">${item.username}</td>
+                <td class="p-2 text-sm">${item.ip}</td>
+                <td class="p-2 text-sm text-gray-500 truncate" title="${item.url}">${item.url}</td>
+                <td class="p-2 text-sm">${item.response}</td>
+            </tr>`;
+        }).join('');
+
+        return `
+            <h2 class="text-2xl font-bold mb-4">${title} (${results.length} registros)</h2>
+            <div class="max-h-[600px] overflow-y-auto border rounded-lg">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="p-2 text-xs font-bold uppercase">Fecha</th>
+                            <th class="p-2 text-xs font-bold uppercase">Usuario</th>
+                            <th class="p-2 text-xs font-bold uppercase">IP</th>
+                            <th class="p-2 text-xs font-bold uppercase">URL</th>
+                            <th class="p-2 text-xs font-bold uppercase">Código</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">${rows}</tbody>
+                </table>
+            </div>`;
+    }
+    // --- FIN DE LA MODIFICACIÓN ---
+    
     function renderUserSummary(data) {
         const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join('');
         return `
             <h2 class="text-2xl font-bold mb-4">Resumen de Actividad</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div class="bg-blue-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_requests}</div><div class="text-sm">Peticiones Totales</div></div>
+                <div class="bg-blue-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_requests.toLocaleString()}</div><div class="text-sm">Peticiones Totales</div></div>
                 <div class="bg-green-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_data_gb}</div><div class="text-sm">GB Consumidos</div></div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -197,23 +287,6 @@ document.addEventListener('DOMContentLoaded', function() {
             </table>`;
     }
 
-    function renderDeniedAccess(data) {
-        const rows = data.denied_access.map(item => `
-            <tr class="hover:bg-gray-50">
-                <td class="p-3">${item.date}</td>
-                <td class="p-3 font-medium">${item.username}</td>
-                <td class="p-3 text-sm truncate" title="${item.url}">${item.url}</td>
-            </tr>`).join('');
-        return `
-            <h2 class="text-2xl font-bold mb-4">Registros de Acceso Denegado (Error 403)</h2>
-            <div class="max-h-[500px] overflow-y-auto">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-100 sticky top-0"><tr><th class="p-3">Fecha</th><th class="p-3">Usuario</th><th class="p-3">URL Bloqueada</th></tr></thead>
-                    <tbody class="divide-y">${rows}</tbody>
-                </table>
-            </div>`;
-    }
-
     function renderDomainChart(canvas, domains) {
         new Chart(canvas, {
             type: 'doughnut',
@@ -225,14 +298,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
                 }]
             },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    }
-                }
-            }
+            options: { responsive: true, plugins: { legend: { position: 'top' } } }
         });
     }
 });
