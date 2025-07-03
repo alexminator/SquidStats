@@ -18,7 +18,6 @@ from services.fetch_data import fetch_squid_data
 from parsers.cache import fetch_squid_cache_stats
 from parsers.log import process_logs, find_last_parent_proxy
 from services.fetch_data_logs import get_users_logs, get_users_with_logs_by_date
-from services.blacklist_users import find_blacklisted_sites, find_blacklisted_sites_by_date
 from services.system_info import (
     get_network_info, get_os_info, get_uptime, get_ram_info,
     get_swap_info, get_cpu_info, get_squid_version, get_timezone, get_network_stats
@@ -27,6 +26,14 @@ from services.get_reports import get_important_metrics, get_metrics_by_date_rang
 from utils.colors import color_map
 from utils.updateSquid import update_squid
 from utils.updateSquidStats import updateSquidStats
+# Importar las nuevas funciones de auditoría
+from services.auditoria_service import (
+    get_all_usernames,
+    get_user_activity_summary,
+    get_top_users_by_data,
+    find_denied_access
+)
+from flask import jsonify
 
 # ------------------- PAQUETES ESTÁNDAR -------------------
 from dotenv import load_dotenv
@@ -457,37 +464,57 @@ def update_web():
     success = updateSquidStats()
     return redirect('/')
 
-# ------------------- VISTA DE REGISTROS BLOQUEADOS -------------------
-@app.route('/blacklist', methods=['GET'])
+# ------------------- VISTA DE AUDITORIAS -------------------
+@app.route('/auditoria', methods=['GET'])
 def blacklist_logs():
-    db = None
+    # --- MODIFICACIÓN: Esta ruta ahora renderiza la nueva página de auditoría ---
+    return render_template(
+        'auditor.html', # Este fichero contiene ahora la interfaz de auditoría
+        page_icon='magnifying-glass.ico', # Ícono actualizado
+        page_title='Centro de Auditoría'
+    )
+
+# --- INICIO DE LA MODIFICACIÓN: NUEVOS ENDPOINTS PARA LA API DE AUDITORÍA ---
+
+@app.route('/api/all-users', methods=['GET'])
+def api_get_all_users():
+    """Endpoint para obtener una lista de todos los usuarios para los filtros del frontend."""
+    db = get_session()
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        if page < 1 or per_page < 1 or per_page > 100:
-            return render_template('error.html', message="Parámetros de paginación inválidos"), 400
-        db = get_session()
-        blacklist_env = os.getenv('BLACKLIST_DOMAINS')
-        blacklist = [domain.strip() for domain in blacklist_env.split(',') if domain.strip()]
-        result_data = find_blacklisted_sites(db, blacklist, page, per_page)
-        if 'error' in result_data:
-            return render_template('error.html', message=result_data['error']), 500
-        return render_template(
-            'blacklist.html',
-            results=result_data['results'],
-            pagination=result_data['pagination'],
-            current_page=page,
-            page_icon='shield-exclamation.ico',
-            page_title='Registros Bloqueados'
-        )
-    except ValueError:
-        return render_template('error.html', message="Parámetros inválidos"), 400
+        users = get_all_usernames(db)
+        return jsonify(users)
     except Exception as e:
-        logger.error(f"Error en blacklist_logs: {str(e)}")
-        return render_template('error.html', message="Error interno del servidor"), 500
+        return jsonify({"error": str(e)}), 500
     finally:
-        if db is not None:
-            db.close()
+        db.close()
+
+@app.route('/api/run-audit', methods=['POST'])
+def api_run_audit():
+    """Endpoint principal que ejecuta la auditoría solicitada desde el frontend."""
+    data = request.get_json()
+    audit_type = data.get('audit_type')
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    username = data.get('username')
+    
+    db = get_session()
+    try:
+        if audit_type == 'user_summary':
+            if not username: return jsonify({"error": "Se requiere un nombre de usuario."}), 400
+            result = get_user_activity_summary(db, username, start_date, end_date)
+        elif audit_type == 'top_users_data':
+            result = get_top_users_by_data(db, start_date, end_date)
+        elif audit_type == 'denied_access':
+            result = find_denied_access(db, start_date, end_date, username)
+        else:
+            return jsonify({"error": "Tipo de auditoría no válido."}), 400
+        
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
 
 # ------------------- REPORTES POR RANGO -------------------
 @app.route('/reports-range', methods=['POST'])

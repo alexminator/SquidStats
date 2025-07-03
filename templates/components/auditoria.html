@@ -1,0 +1,239 @@
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center mb-6 border-b pb-4">
+        <i class="fas fa-magnifying-glass text-3xl text-blue-600 mr-4"></i>
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800">Centro de Auditoría</h1>
+            <p class="text-gray-500 mt-1">Herramienta para el análisis de actividad y seguridad.</p>
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+        <form id="audit-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
+            
+            <div>
+                <label for="audit-type" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Auditoría</label>
+                <select id="audit-type" name="audit_type" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <option value="user_summary">Resumen por Usuario</option>
+                    <option value="top_users_data">Top 10 Usuarios (Datos)</option>
+                    <option value="denied_access">Accesos Denegados</option>
+                </select>
+            </div>
+
+            <div id="user-filter-container">
+                <label for="username-filter" class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+                <select id="username-filter" name="username" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <option value="">-- Todos los usuarios --</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="start-date" class="block text-sm font-medium text-gray-700 mb-1">Fecha de Inicio</label>
+                <input type="date" id="start-date" name="start_date" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="end-date" class="block text-sm font-medium text-gray-700 mb-1">Fecha de Fin</label>
+                <input type="date" id="end-date" name="end_date" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+
+            <div class="lg:col-start-4">
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 flex items-center justify-center">
+                    <i class="fas fa-play mr-2"></i>
+                    Generar Reporte
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div id="audit-results-container" class="bg-white p-6 rounded-lg shadow-lg min-h-[300px]">
+        <div class="text-center text-gray-500 py-10">
+            <i class="fas fa-clipboard-list text-5xl mb-4 text-gray-300"></i>
+            <h3 class="text-xl font-semibold">Seleccione los filtros y genere un reporte</h3>
+            <p class="mt-2">Los resultados de su auditoría aparecerán aquí.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('audit-form');
+    const resultsContainer = document.getElementById('audit-results-container');
+    const auditTypeSelect = document.getElementById('audit-type');
+    const userFilterContainer = document.getElementById('user-filter-container');
+    const usernameSelect = document.getElementById('username-filter');
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+
+    // Inicializar fechas por defecto (últimos 7 días)
+    const today = new Date();
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(today.getDate() - 7);
+    startDateInput.value = sevenDaysAgo.toISOString().split('T')[0];
+    endDateInput.value = today.toISOString().split('T')[0];
+
+    // Cargar usuarios en el dropdown
+    fetch('/api/all-users')
+        .then(response => response.json())
+        .then(users => {
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                usernameSelect.appendChild(option);
+            });
+        });
+
+    // Mostrar/ocultar filtro de usuario según el tipo de auditoría
+    auditTypeSelect.addEventListener('change', function() {
+        if (this.value === 'user_summary') {
+            userFilterContainer.style.display = 'block';
+        } else if (this.value === 'denied_access') {
+             userFilterContainer.style.display = 'block'; // También se puede filtrar por usuario
+        } else {
+            userFilterContainer.style.display = 'none';
+        }
+    });
+
+    // Manejar envío del formulario
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        
+        const formData = new FormData(form);
+        const data = {
+            audit_type: formData.get('audit_type'),
+            start_date: formData.get('start_date'),
+            end_date: formData.get('end_date'),
+            username: formData.get('audit_type') === 'user_summary' || formData.get('username') ? formData.get('username') : null
+        };
+
+        // Validar que el usuario esté seleccionado si es necesario
+        if (data.audit_type === 'user_summary' && !data.username) {
+            alert('Por favor, seleccione un usuario para este tipo de auditoría.');
+            return;
+        }
+
+        // Mostrar estado de carga
+        resultsContainer.innerHTML = `
+            <div class="text-center text-gray-500 py-10">
+                <i class="fas fa-spinner fa-spin text-5xl mb-4 text-blue-500"></i>
+                <h3 class="text-xl font-semibold">Generando reporte...</h3>
+            </div>`;
+        
+        // Llamada a la API
+        fetch('/api/run-audit', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            renderResults(data.audit_type, result);
+        })
+        .catch(error => {
+            resultsContainer.innerHTML = `<div class="text-center text-red-500 py-10"><strong>Error:</strong> ${error}</div>`;
+        });
+    });
+
+    function renderResults(auditType, data) {
+        if (data.error) {
+            resultsContainer.innerHTML = `<div class="text-center text-red-500 py-10"><strong>Error:</strong> ${data.error}</div>`;
+            return;
+        }
+        
+        let html = '';
+        switch(auditType) {
+            case 'user_summary':
+                html = renderUserSummary(data);
+                break;
+            case 'top_users_data':
+                html = renderTopUsers(data);
+                break;
+            case 'denied_access':
+                html = renderDeniedAccess(data);
+                break;
+        }
+        resultsContainer.innerHTML = html;
+
+        // Si hay un canvas para el gráfico, lo renderizamos
+        const chartCanvas = document.getElementById('domain-chart');
+        if (chartCanvas && data.top_domains) {
+            renderDomainChart(chartCanvas, data.top_domains);
+        }
+    }
+
+    function renderUserSummary(data) {
+        const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join('');
+        return `
+            <h2 class="text-2xl font-bold mb-4">Resumen de Actividad</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-blue-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_requests}</div><div class="text-sm">Peticiones Totales</div></div>
+                <div class="bg-green-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_data_gb}</div><div class="text-sm">GB Consumidos</div></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-xl font-semibold mb-2">Top 5 Dominios Visitados</h3>
+                    <ul class="list-disc list-inside bg-gray-50 p-4 rounded">${topDomainsHtml}</ul>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-2">Gráfico de Visitas</h3>
+                    <canvas id="domain-chart"></canvas>
+                </div>
+            </div>`;
+    }
+
+    function renderTopUsers(data) {
+        const rows = data.top_users.map((user, index) => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-3">${index + 1}</td>
+                <td class="p-3 font-medium">${user.username}</td>
+                <td class="p-3 font-mono">${user.total_data_gb.toFixed(2)} GB</td>
+            </tr>`).join('');
+        return `
+            <h2 class="text-2xl font-bold mb-4">Top 10 Usuarios por Consumo de Datos</h2>
+            <table class="w-full text-left">
+                <thead class="bg-gray-100"><tr><th class="p-3">#</th><th class="p-3">Usuario</th><th class="p-3">Datos Consumidos</th></tr></thead>
+                <tbody class="divide-y">${rows}</tbody>
+            </table>`;
+    }
+
+    function renderDeniedAccess(data) {
+        const rows = data.denied_access.map(item => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-3">${item.date}</td>
+                <td class="p-3 font-medium">${item.username}</td>
+                <td class="p-3 text-sm truncate" title="${item.url}">${item.url}</td>
+            </tr>`).join('');
+        return `
+            <h2 class="text-2xl font-bold mb-4">Registros de Acceso Denegado (Error 403)</h2>
+            <div class="max-h-[500px] overflow-y-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0"><tr><th class="p-3">Fecha</th><th class="p-3">Usuario</th><th class="p-3">URL Bloqueada</th></tr></thead>
+                    <tbody class="divide-y">${rows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    function renderDomainChart(canvas, domains) {
+        new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: domains.map(d => d.domain),
+                datasets: [{
+                    label: 'Peticiones',
+                    data: domains.map(d => d.count),
+                    backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            }
+        });
+    }
+});
+</script>

@@ -100,7 +100,7 @@ function checkSquidLog() {
 function updateOrCloneRepo() {
     local repo_url="https://github.com/alexminator/SquidStats.git"
     local destino="/opt/squidstats"
-    local branch="inicio"
+    local branch="fusion"
     local env_exists=false
 
     if [ -d "$destino" ]; then
@@ -302,7 +302,7 @@ function patchSquidConf() {
     if ! grep -q '^logformat[[:space:]]\+detailed' "$squid_conf"; then
         cat << 'EOF' >> "$squid_conf"
 
-logformat detailed %ts.%03tu %>a %ui %un [%tl] "%rm %ru HTTP/%rv" %>Hs %<st %rm %ru %>a %mt %<a %<rm %Ss/%Sh %<st
+logformat detailed %ts.%03tu|%>a|%ui|%un|[%tl]|%rm|%ru|HTTP/%rv|%>Hs|%<st|%mt|%<a|%<rm|%Ss/%Sh
 EOF
         ok "Se agregó logformat detailed"
     else
