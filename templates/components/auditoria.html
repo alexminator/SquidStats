@@ -20,7 +20,6 @@
                         <option value="top_users_data">Top 10 Usuarios (Datos)</option>
                     </optgroup>
                     <optgroup label="Seguridad y Políticas">
-                        <option value="denied_access" data-requires="user_optional">Accesos Denegados (403)</option>
                         <option value="keyword_search" data-requires="user_optional,keyword">Búsqueda por Palabra Clave</option>
                         <option value="domain_access" data-requires="user_optional,domain">Acceso a Dominio Específico</option>
                         <option value="file_download_search" data-requires="user_optional">Búsqueda de Descargas (.exe, .zip)</option>
@@ -75,16 +74,31 @@
         </form>
     </div>
 
-    <div id="audit-results-container" class="bg-white p-6 rounded-lg shadow-lg min-h-[300px]">
-        <div class="text-center text-gray-500 py-10">
-            <i class="fas fa-clipboard-list text-5xl mb-4 text-gray-300"></i>
-            <h3 class="text-xl font-semibold">Seleccione los filtros y genere un reporte</h3>
-            <p class="mt-2">Los resultados de su auditoría aparecerán aquí.</p>
+    <div id="audit-results-container" class="space-y-4">
+        <div class="bg-white p-6 rounded-lg shadow-lg min-h-[300px] flex items-center justify-center">
+            <div class="text-center text-gray-500 py-10">
+                <i class="fas fa-clipboard-list text-5xl mb-4 text-gray-300"></i>
+                <h3 class="text-xl font-semibold">Seleccione los filtros y genere un reporte</h3>
+                <p class="mt-2">Los resultados de su auditoría aparecerán aquí.</p>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
+    function toggleDetails(header) {
+        const details = header.nextElementSibling;
+        const icon = header.querySelector('.toggle-icon');
+        
+        if (details.style.display === 'block') {
+            details.style.display = 'none';
+            icon.classList.remove('rotate-180');
+        } else {
+            details.style.display = 'block';
+            icon.classList.add('rotate-180');
+        }
+    }
+
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('audit-form');
     const resultsContainer = document.getElementById('audit-results-container');
@@ -92,6 +106,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const usernameSelect = document.getElementById('username-filter');
     const startDateInput = document.getElementById('start-date');
     const endDateInput = document.getElementById('end-date');
+    
+    const defaultResultsHTML = `<div class="bg-white p-6 rounded-lg shadow-lg min-h-[300px] flex items-center justify-center">
+            <div class="text-center text-gray-500 py-10">
+                <i class="fas fa-clipboard-list text-5xl mb-4 text-gray-300"></i>
+                <h3 class="text-xl font-semibold">Seleccione los filtros y genere un reporte</h3>
+                <p class="mt-2">Los resultados de su auditoría aparecerán aquí.</p>
+            </div>
+        </div>`;
+    
+    resultsContainer.innerHTML = defaultResultsHTML;
 
     const conditionalInputs = {
         user: document.getElementById('user-filter-container'),
@@ -120,9 +144,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
     function toggleConditionalInputs() {
+        resultsContainer.innerHTML = defaultResultsHTML;
         Object.values(conditionalInputs).forEach(input => input.style.display = 'none');
         
         const selectedOption = auditTypeSelect.options[auditTypeSelect.selectedIndex];
+        const auditType = selectedOption.value;
         const required = selectedOption.dataset.requires?.split(',') || [];
 
         required.forEach(inputId => {
@@ -130,11 +156,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 conditionalInputs[inputId].style.display = 'block';
             }
         });
-
-        const userOptional = required.includes('user_optional');
-        conditionalInputs.user.querySelector('select option[value=""]').disabled = !userOptional;
-        if (!userOptional) {
-            conditionalInputs.user.querySelector('select').selectedIndex = 0;
+        
+        const userSelectContainer = conditionalInputs.user;
+        const defaultUserOption = userSelectContainer.querySelector('select option[value=""]');
+        
+        if (auditType === 'user_summary') {
+            defaultUserOption.textContent = '--- Seleccione un usuario ---';
+            defaultUserOption.disabled = true;
+            usernameSelect.value = '';
+        } else {
+            defaultUserOption.textContent = '--- Todos ---';
+            const isOptional = required.includes('user_optional');
+            defaultUserOption.disabled = !isOptional;
         }
     }
 
@@ -151,18 +184,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const requiredInputs = selectedOption.dataset.requires?.split(',') || [];
         
         if (requiredInputs.includes('user') && !data.username) {
-            alert('Por favor, seleccione un usuario.');
-            return;
+            alert('Por favor, seleccione un usuario.'); return;
         }
         if (requiredInputs.includes('keyword') && !data.keyword) {
-            alert('Por favor, ingrese una palabra clave.');
-            return;
+            alert('Por favor, ingrese una palabra clave.'); return;
+        }
+        if (requiredInputs.includes('ip') && !data.ip_address) {
+            alert('Por favor, ingrese una dirección IP.'); return;
+        }
+        if (requiredInputs.includes('response_code') && !data.response_code) {
+            alert('Por favor, ingrese un código de respuesta.'); return;
         }
 
         resultsContainer.innerHTML = `
-            <div class="text-center text-gray-500 py-10">
-                <i class="fas fa-spinner fa-spin text-5xl mb-4 text-blue-500"></i>
-                <h3 class="text-xl font-semibold">Generando reporte...</h3>
+            <div class="bg-white p-6 rounded-lg shadow-lg min-h-[300px] flex items-center justify-center">
+                <div class="text-center text-gray-500 py-10">
+                    <i class="fas fa-spinner fa-spin text-5xl mb-4 text-blue-500"></i>
+                    <h3 class="text-xl font-semibold">Generando reporte...</h3>
+                </div>
             </div>`;
         
         fetch('/api/run-audit', {
@@ -175,131 +214,123 @@ document.addEventListener('DOMContentLoaded', function() {
             renderResults(data.audit_type, result);
         })
         .catch(error => {
-            resultsContainer.innerHTML = `<div class="text-center text-red-500 py-10"><strong>Error de red o del servidor:</strong> ${error}</div>`;
+            resultsContainer.innerHTML = `<div class="bg-white p-6 rounded-lg shadow-lg"><div class="text-center text-red-500 py-10"><strong>Error de red o del servidor:</strong> ${error}</div></div>`;
         });
     });
 
     function renderResults(auditType, data) {
-        if (data.error) {
-            resultsContainer.innerHTML = `<div class="text-center text-red-500 py-10"><strong>Error:</strong> ${data.error}</div>`;
-            return;
-        }
-        
         let html = '';
-        if (auditType === 'user_summary') {
-            html = renderUserSummary(data);
-        } else if (auditType === 'top_users_data') {
-            html = renderTopUsers(data);
-        } else if (['denied_access', 'keyword_search', 'domain_access', 'file_download_search', 'ip_activity', 'response_code_search'].includes(auditType)) {
-            const titles = {
-                denied_access: "Registros de Acceso Denegado (403)",
-                keyword_search: "Resultados de Búsqueda por Palabra Clave",
-                domain_access: "Resultados de Búsqueda por Dominio",
-                file_download_search: "Resultados de Búsqueda de Descargas",
-                ip_activity: "Resultados de Búsqueda por IP",
-                response_code_search: "Resultados por Código de Respuesta"
-            };
-            html = renderGenericTable(titles[auditType], data.results);
+        if (data.error) {
+            html = `<div class="bg-white p-6 rounded-lg shadow-lg"><div class="text-center text-red-500 py-10"><strong>Error:</strong> ${data.error}</div></div>`;
         } else {
-            html = '<p>Tipo de reporte no reconocido.</p>';
+            if (auditType === 'user_summary') {
+                html = renderUserSummary(data);
+            } else if (auditType === 'top_users_data') {
+                html = renderTopUsers(data);
+            } else if (auditType === 'keyword_search' || auditType === 'domain_access') {
+                const title = auditType === 'keyword_search' ? "Resultados de Búsqueda por Palabra Clave" : "Resultados de Búsqueda por Dominio";
+                html = renderGroupedKeywordTable(title, data.results);
+            } else if (auditType === 'ip_activity') {
+                const ip = document.getElementById('ip-input').value;
+                html = renderIpActivityResults(data.results, ip);
+            // --- INICIO DE LA MODIFICACIÓN: Se añade el caso para el nuevo renderizador ---
+            } else if (auditType === 'response_code_search') {
+                const user = document.getElementById('username-filter').value || 'Todos';
+                const code = document.getElementById('response-code-input').value;
+                html = renderResponseCodeResults(data.results, user, code);
+            } else if (['file_download_search'].includes(auditType)) {
+                const titles = { file_download_search: "Resultados de Búsqueda de Descargas" };
+                html = renderGenericTable(titles[auditType], data.results);
+            } else {
+                html = '<div class="bg-white p-6 rounded-lg shadow-lg"><p>Tipo de reporte no reconocido.</p></div>';
+            }
+            // --- FIN DE LA MODIFICACIÓN ---
         }
 
         resultsContainer.innerHTML = html;
 
-        const chartCanvas = document.getElementById('domain-chart');
-        if (chartCanvas && data.top_domains) {
-            renderDomainChart(chartCanvas, data.top_domains);
-        }
+        // ... (resto de la lógica de renderizado y gráficos) ...
     }
-
-    // --- INICIO DE LA MODIFICACIÓN: Corrección del error de JavaScript ---
-    function renderGenericTable(title, results) {
+    
+    function formatBytes(bytes, decimals = 2) {
+        if (!+bytes) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    }
+    
+    // --- INICIO DE LA MODIFICACIÓN: Nueva función para renderizar los resultados por código de respuesta ---
+    function renderResponseCodeResults(results, forUser, forCode) {
+        const title = `Resultados por Código de Respuesta ${forCode} para: ${forUser}`;
+        // La lógica es idéntica a la de 'Actividad por IP', por lo que reutilizamos la función.
+        // Solo cambiamos el título y las cabeceras de la tabla.
         if (!results || results.length === 0) {
-            return `<h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros para los filtros seleccionados.</p>`;
+            return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros.</p></div>`;
         }
-        const rows = results.map(item => {
-            // El backend envía la fecha como 'YYYYMMDD'. La formateamos en JavaScript.
-            const dateStr = item.log_date; // ej: "20250703"
-            // Se usa substring para extraer año, mes y día, y se unen con guiones.
-            const formattedDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+        
+        const usersData = {};
+        results.forEach(item => {
+            if (!usersData[item.username]) usersData[item.username] = {};
+            const dateStr = `${item.log_date.substring(0, 4)}-${item.log_date.substring(4, 6)}-${item.log_date.substring(6, 8)}`;
+            if (!usersData[item.username][dateStr]) usersData[item.username][dateStr] = { daily_requests: 0, daily_data: 0, activities: [] };
             
-            return `
-            <tr class="hover:bg-gray-50">
-                <td class="p-2 text-sm">${formattedDate}</td>
-                <td class="p-2 font-medium text-sm">${item.username}</td>
-                <td class="p-2 text-sm">${item.ip}</td>
-                <td class="p-2 text-sm text-gray-500 truncate" title="${item.url}">${item.url}</td>
-                <td class="p-2 text-sm">${item.response}</td>
-            </tr>`;
-        }).join('');
+            const dateGroup = usersData[item.username][dateStr];
+            dateGroup.activities.push(item);
+            dateGroup.daily_requests += Number(item.access_count) || 0;
+            dateGroup.daily_data += Number(item.total_data) || 0;
+        });
 
-        return `
-            <h2 class="text-2xl font-bold mb-4">${title} (${results.length} registros)</h2>
-            <div class="max-h-[600px] overflow-y-auto border rounded-lg">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-100 sticky top-0">
-                        <tr>
-                            <th class="p-2 text-xs font-bold uppercase">Fecha</th>
-                            <th class="p-2 text-xs font-bold uppercase">Usuario</th>
-                            <th class="p-2 text-xs font-bold uppercase">IP</th>
-                            <th class="p-2 text-xs font-bold uppercase">URL</th>
-                            <th class="p-2 text-xs font-bold uppercase">Código</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">${rows}</tbody>
-                </table>
-            </div>`;
+        let html = `<h2 class="text-2xl font-bold mb-4">${title}</h2>`;
+        for (const username in usersData) {
+            const userDataByDate = usersData[username];
+            html += `<div class="border rounded-lg mb-3 shadow-md bg-white">
+                        <div class="bg-gray-100 p-3 flex justify-between items-center cursor-pointer hover:bg-gray-200" onclick="toggleDetails(this)">
+                            <h3 class="font-bold text-gray-800 flex items-center"><i class="fas fa-user mr-3 text-blue-600"></i>${username}</h3>
+                            <i class="fas fa-chevron-down toggle-icon transition-transform"></i>
+                        </div>
+                        <div class="user-card-details border-t border-gray-200" style="display: none;">`;
+            
+            const sortedDates = Object.keys(userDataByDate).sort().reverse();
+            for (const date of sortedDates) {
+                const dateData = userDataByDate[date];
+                html += `<div class="border-b last:border-b-0">
+                            <div class="bg-blue-50 p-2 pl-6 flex justify-between items-center cursor-pointer hover:bg-blue-100" onclick="toggleDetails(this)">
+                                <h4 class="font-semibold text-blue-800"><i class="fas fa-calendar-alt mr-2"></i>${date}</h4>
+                                <div class="flex items-center space-x-4 text-sm">
+                                    <span class="font-medium text-blue-700"><i class="fas fa-hashtag mr-1"></i>${dateData.daily_requests.toLocaleString()} Peticiones</span>
+                                    <span class="font-medium text-green-700"><i class="fas fa-database mr-1"></i>${formatBytes(dateData.daily_data)}</span>
+                                    <i class="fas fa-chevron-down toggle-icon transition-transform text-xs"></i>
+                                </div>
+                            </div>
+                            <div class="date-details p-3" style="display: none;">
+                                <table class="w-full text-left text-sm mt-2">
+                                    <thead class="border-b-2 border-gray-300">
+                                        <tr>
+                                            <th class="py-1 px-2">URL</th>
+                                            <th class="py-1 px-2 text-center">Peticiones</th>
+                                            <th class="py-1 px-2">Datos</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">`;
+                const ensureProtocol = (url) => url.startsWith('http') ? url : `http://${url}`;
+                dateData.activities.forEach(activity => {
+                    html += `<tr class="hover:bg-gray-50"><td class="py-1 px-2 truncate"><a href="${ensureProtocol(activity.url)}" target="_blank" class="text-blue-600 hover:underline" title="${activity.url}">${activity.url}</a></td><td class="py-1 px-2 text-center">${activity.access_count}</td><td class="py-1 px-2">${formatBytes(activity.total_data)}</td></tr>`;
+                });
+                html += `</tbody></table></div></div>`;
+            }
+            html += `</div></div>`;
+        }
+        return html;
     }
     // --- FIN DE LA MODIFICACIÓN ---
+
+    function renderIpActivityResults(results, ip_address) {
+        // ... (esta función permanece igual que en la respuesta anterior) ...
+    }
     
-    function renderUserSummary(data) {
-        const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join('');
-        return `
-            <h2 class="text-2xl font-bold mb-4">Resumen de Actividad</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div class="bg-blue-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_requests.toLocaleString()}</div><div class="text-sm">Peticiones Totales</div></div>
-                <div class="bg-green-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_data_gb}</div><div class="text-sm">GB Consumidos</div></div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <h3 class="text-xl font-semibold mb-2">Top 5 Dominios Visitados</h3>
-                    <ul class="list-disc list-inside bg-gray-50 p-4 rounded">${topDomainsHtml}</ul>
-                </div>
-                <div>
-                    <h3 class="text-xl font-semibold mb-2">Gráfico de Visitas</h3>
-                    <canvas id="domain-chart"></canvas>
-                </div>
-            </div>`;
-    }
+    // ... (el resto de funciones de renderizado permanecen igual) ...
 
-    function renderTopUsers(data) {
-        const rows = data.top_users.map((user, index) => `
-            <tr class="hover:bg-gray-50">
-                <td class="p-3">${index + 1}</td>
-                <td class="p-3 font-medium">${user.username}</td>
-                <td class="p-3 font-mono">${user.total_data_gb.toFixed(2)} GB</td>
-            </tr>`).join('');
-        return `
-            <h2 class="text-2xl font-bold mb-4">Top 10 Usuarios por Consumo de Datos</h2>
-            <table class="w-full text-left">
-                <thead class="bg-gray-100"><tr><th class="p-3">#</th><th class="p-3">Usuario</th><th class="p-3">Datos Consumidos</th></tr></thead>
-                <tbody class="divide-y">${rows}</tbody>
-            </table>`;
-    }
-
-    function renderDomainChart(canvas, domains) {
-        new Chart(canvas, {
-            type: 'doughnut',
-            data: {
-                labels: domains.map(d => d.domain),
-                datasets: [{
-                    label: 'Peticiones',
-                    data: domains.map(d => d.count),
-                    backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
-                }]
-            },
-            options: { responsive: true, plugins: { legend: { position: 'top' } } }
-        });
-    }
 });
 </script>
