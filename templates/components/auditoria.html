@@ -76,7 +76,7 @@
                         </optgroup>
                     </select>
                 </div>
-                </div>
+            </div>
 
             <div>
                 <label for="start-date" class="block text-sm font-medium text-gray-700 mb-1">Fecha de Inicio</label>
@@ -422,27 +422,151 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderGroupedKeywordTable(title, results) {
-        // ... (esta función permanece igual)
+        if (!results || results.length === 0) {
+            return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros para los filtros seleccionados.</p></div>`;
+        }
+        const rows = results.map(item => {
+            const dateStr = item.log_date;
+            const formattedDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+            
+            return `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 text-sm">${formattedDate}</td>
+                <td class="p-2 font-medium text-sm">${item.username}</td>
+                <td class="p-2 text-sm">${item.ip}</td>
+                <td class="p-2 text-sm text-gray-500 truncate" title="${item.url}">${item.url}</td>
+                <td class="p-2 text-sm text-center font-bold">${item.access_count}</td>
+            </tr>`;
+        }).join('');
+
+        return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title} (${results.length} registros únicos)</h2>
+            <div class="max-h-[600px] overflow-y-auto border rounded-lg">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="p-2 text-xs font-bold uppercase">Fecha</th>
+                            <th class="p-2 text-xs font-bold uppercase">Usuario</th>
+                            <th class="p-2 text-xs font-bold uppercase">IP</th>
+                            <th class="p-2 text-xs font-bold uppercase">URL</th>
+                            <th class="p-2 text-xs font-bold uppercase text-center">Intentos</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">${rows}</tbody>
+                </table>
+            </div></div>`;
     }
 
     function renderGenericTable(title, results) {
-       // ... (esta función permanece igual)
+        if (!results || results.length === 0) {
+            return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros para los filtros seleccionados.</p></div>`;
+        }
+        const rows = results.map(item => {
+            const dateStr = item.log_date;
+            const formattedDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+            
+            return `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 text-sm">${formattedDate}</td>
+                <td class="p-2 font-medium text-sm">${item.username}</td>
+                <td class="p-2 text-sm">${item.ip}</td>
+                <td class="p-2 text-sm text-gray-500 truncate" title="${item.url}">${item.url}</td>
+                <td class="p-2 text-sm">${item.response}</td>
+            </tr>`;
+        }).join('');
+
+        return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title} (${results.length} registros)</h2>
+            <div class="max-h-[600px] overflow-y-auto border rounded-lg">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="p-2 text-xs font-bold uppercase">Fecha</th>
+                            <th class="p-2 text-xs font-bold uppercase">Usuario</th>
+                            <th class="p-2 text-xs font-bold uppercase">IP</th>
+                            <th class="p-2 text-xs font-bold uppercase">URL</th>
+                            <th class="p-2 text-xs font-bold uppercase">Código</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">${rows}</tbody>
+                </table>
+            </div></div>`;
     }
     
     function renderUserSummary(data) {
-        // ... (esta función permanece igual)
+        const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join('');
+        const responseSummaryHtml = data.response_summary.slice(0, 5).map(r => `<li>${r.code}: <span class="font-bold">${r.count.toLocaleString()}</span></li>`).join('');
+
+        return `<div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-4">Resumen de Actividad</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-blue-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_requests.toLocaleString()}</div><div class="text-sm">Peticiones Totales</div></div>
+                <div class="bg-green-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_data_gb}</div><div class="text-sm">GB Consumidos</div></div>
+                <div class="bg-gray-100 p-4 rounded-lg">
+                    <h4 class="font-semibold text-sm mb-1 text-center">Resumen de Respuestas</h4>
+                    <ul class="text-xs space-y-1">${responseSummaryHtml}</ul>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-xl font-semibold mb-2">Top 5 Dominios Visitados</h3>
+                    <canvas id="domain-chart"></canvas>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-2">Distribución de Respuestas HTTP</h3>
+                    <canvas id="response-chart"></canvas>
+                </div>
+            </div></div>`;
     }
 
     function renderTopUsers(data) {
-        // ... (esta función permanece igual)
+        const rows = data.top_users.map((user, index) => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-3">${index + 1}</td>
+                <td class="p-3 font-medium">${user.username}</td>
+                <td class="p-3 font-mono">${user.total_data_gb.toFixed(2)} GB</td>
+            </tr>`).join('');
+        return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">Top 10 Usuarios por Consumo de Datos</h2>
+            <table class="w-full text-left">
+                <thead class="bg-gray-100"><tr><th class="p-3">#</th><th class="p-3">Usuario</th><th class="p-3">Datos Consumidos</th></tr></thead>
+                <tbody class="divide-y">${rows}</tbody>
+            </table></div>`;
     }
 
     function renderDomainChart(canvas, domains) {
-        // ... (esta función permanece igual)
+        new Chart(canvas, {
+            type: 'pie',
+            data: {
+                labels: domains.map(d => d.domain),
+                datasets: [{
+                    label: 'Peticiones',
+                    data: domains.map(d => d.count),
+                    backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right' } } }
+        });
     }
 
     function renderResponseChart(canvas, responses) {
-        // ... (esta función permanece igual)
+        const getResponseColor = (code) => {
+            if (code >= 500) return '#DC2626'; 
+            if (code >= 400) return '#F59E0B'; 
+            if (code >= 300) return '#3B82F6'; 
+            if (code >= 200) return '#10B981'; 
+            return '#6B7280'; 
+        };
+
+        new Chart(canvas, {
+            type: 'pie',
+            data: {
+                labels: responses.map(r => `Código ${r.code}`),
+                datasets: [{
+                    label: 'Cantidad',
+                    data: responses.map(r => r.count),
+                    backgroundColor: responses.map(r => getResponseColor(r.code)),
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right' } } }
+        });
     }
 });
 </script>
