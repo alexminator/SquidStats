@@ -52,9 +52,31 @@
                 </div>
                 <div id="response-code-input-container" class="conditional-input" style="display: none;">
                     <label for="response-code-input" class="block text-sm font-medium text-gray-700 mb-1">Código HTTP</label>
-                    <input type="number" id="response-code-input" name="response_code" class="w-full border-gray-300 rounded-md shadow-sm" placeholder="Ej: 404, 503">
+                    <select id="response-code-input" name="response_code" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">-- Seleccione un código --</option>
+                        <optgroup label="Respuestas Exitosas (2xx)">
+                            <option value="200">200 OK</option>
+                        </optgroup>
+                        <optgroup label="Redirecciones (3xx)">
+                            <option value="301">301 Moved Permanently</option>
+                            <option value="302">302 Found</option>
+                            <option value="304">304 Not Modified</option>
+                        </optgroup>
+                        <optgroup label="Errores de Cliente (4xx)">
+                            <option value="400">400 Bad Request</option>
+                            <option value="401">401 Unauthorized</option>
+                            <option value="403">403 Forbidden</option>
+                            <option value="404">404 Not Found</option>
+                        </optgroup>
+                        <optgroup label="Errores de Servidor (5xx)">
+                            <option value="500">500 Internal Server Error</option>
+                            <option value="502">502 Bad Gateway</option>
+                            <option value="503">503 Service Unavailable</option>
+                            <option value="504">504 Gateway Timeout</option>
+                        </optgroup>
+                    </select>
                 </div>
-            </div>
+                </div>
 
             <div>
                 <label for="start-date" class="block text-sm font-medium text-gray-700 mb-1">Fecha de Inicio</label>
@@ -233,7 +255,6 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (auditType === 'ip_activity') {
                 const ip = document.getElementById('ip-input').value;
                 html = renderIpActivityResults(data.results, ip);
-            // --- INICIO DE LA MODIFICACIÓN: Se añade el caso para el nuevo renderizador ---
             } else if (auditType === 'response_code_search') {
                 const user = document.getElementById('username-filter').value || 'Todos';
                 const code = document.getElementById('response-code-input').value;
@@ -244,12 +265,19 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 html = '<div class="bg-white p-6 rounded-lg shadow-lg"><p>Tipo de reporte no reconocido.</p></div>';
             }
-            // --- FIN DE LA MODIFICACIÓN ---
         }
 
         resultsContainer.innerHTML = html;
 
-        // ... (resto de la lógica de renderizado y gráficos) ...
+        const domainChartCanvas = document.getElementById('domain-chart');
+        if (domainChartCanvas && data.top_domains) {
+            renderDomainChart(domainChartCanvas, data.top_domains);
+        }
+
+        const responseChartCanvas = document.getElementById('response-chart');
+        if (responseChartCanvas && data.response_summary) {
+            renderResponseChart(responseChartCanvas, data.response_summary);
+        }
     }
     
     function formatBytes(bytes, decimals = 2) {
@@ -260,12 +288,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
     }
-    
-    // --- INICIO DE LA MODIFICACIÓN: Nueva función para renderizar los resultados por código de respuesta ---
+
     function renderResponseCodeResults(results, forUser, forCode) {
         const title = `Resultados por Código de Respuesta ${forCode} para: ${forUser}`;
-        // La lógica es idéntica a la de 'Actividad por IP', por lo que reutilizamos la función.
-        // Solo cambiamos el título y las cabeceras de la tabla.
         if (!results || results.length === 0) {
             return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros.</p></div>`;
         }
@@ -324,13 +349,100 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return html;
     }
-    // --- FIN DE LA MODIFICACIÓN ---
 
     function renderIpActivityResults(results, ip_address) {
-        // ... (esta función permanece igual que en la respuesta anterior) ...
+        const title = `Resultados de Búsqueda para la IP: ${ip_address}`;
+        if (!results || results.length === 0) {
+            return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros.</p></div>`;
+        }
+        
+        const usersData = {};
+        results.forEach(item => {
+            if (!usersData[item.username]) {
+                usersData[item.username] = {};
+            }
+            const dateStr = `${item.log_date.substring(0, 4)}-${item.log_date.substring(4, 6)}-${item.log_date.substring(6, 8)}`;
+            if (!usersData[item.username][dateStr]) {
+                usersData[item.username][dateStr] = { daily_requests: 0, daily_data: 0, activities: [] };
+            }
+            const dateGroup = usersData[item.username][dateStr];
+            dateGroup.activities.push(item);
+            
+            dateGroup.daily_requests += Number(item.access_count) || 0;
+            dateGroup.daily_data += Number(item.total_data) || 0;
+        });
+
+        let html = `<h2 class="text-2xl font-bold mb-4">${title}</h2>`;
+        for (const username in usersData) {
+            const userDataByDate = usersData[username];
+            html += `
+                <div class="border rounded-lg mb-3 shadow-md bg-white">
+                    <div class="bg-gray-100 p-3 flex justify-between items-center cursor-pointer hover:bg-gray-200" onclick="toggleDetails(this)">
+                        <h3 class="font-bold text-gray-800 flex items-center">
+                            <i class="fas fa-user mr-3 text-blue-600"></i>${username}
+                        </h3>
+                        <i class="fas fa-chevron-down toggle-icon transition-transform"></i>
+                    </div>
+                    <div class="user-card-details border-t border-gray-200" style="display: none;">`;
+            
+            const sortedDates = Object.keys(userDataByDate).sort().reverse(); 
+
+            for (const date of sortedDates) {
+                const dateData = userDataByDate[date];
+                html += `
+                    <div class="border-b last:border-b-0">
+                        <div class="bg-blue-50 p-2 pl-6 flex justify-between items-center cursor-pointer hover:bg-blue-100" onclick="toggleDetails(this)">
+                            <h4 class="font-semibold text-blue-800"><i class="fas fa-calendar-alt mr-2"></i>${date}</h4>
+                            <div class="flex items-center space-x-4 text-sm">
+                                <span class="font-medium text-blue-700"><i class="fas fa-hashtag mr-1"></i>${dateData.daily_requests.toLocaleString()} Peticiones</span>
+                                <span class="font-medium text-green-700"><i class="fas fa-database mr-1"></i>${formatBytes(dateData.daily_data)}</span>
+                                <i class="fas fa-chevron-down toggle-icon transition-transform text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="date-details p-3" style="display: none;">
+                            <table class="w-full text-left text-sm mt-2">
+                                <thead class="border-b-2 border-gray-300">
+                                    <tr>
+                                        <th class="py-1 px-2">URL Visitada</th>
+                                        <th class="py-1 px-2 text-center">Intentos</th>
+                                        <th class="py-1 px-2">Datos</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">`;
+                
+                const ensureProtocol = (url) => url.startsWith('http') ? url : `http://${url}`;
+                dateData.activities.forEach(activity => {
+                    html += `<tr class="hover:bg-gray-50"><td class="py-1 px-2 truncate"><a href="${ensureProtocol(activity.url)}" target="_blank" class="text-blue-600 hover:underline" title="${activity.url}">${activity.url}</a></td><td class="py-1 px-2 text-center">${activity.access_count}</td><td class="py-1 px-2">${formatBytes(activity.total_data)}</td></tr>`;
+                });
+                html += '</tbody></table></div></div>';
+            }
+            html += `</div></div>`;
+        }
+        return html;
+    }
+
+    function renderGroupedKeywordTable(title, results) {
+        // ... (esta función permanece igual)
+    }
+
+    function renderGenericTable(title, results) {
+       // ... (esta función permanece igual)
     }
     
-    // ... (el resto de funciones de renderizado permanecen igual) ...
+    function renderUserSummary(data) {
+        // ... (esta función permanece igual)
+    }
 
+    function renderTopUsers(data) {
+        // ... (esta función permanece igual)
+    }
+
+    function renderDomainChart(canvas, domains) {
+        // ... (esta función permanece igual)
+    }
+
+    function renderResponseChart(canvas, responses) {
+        // ... (esta función permanece igual)
+    }
 });
 </script>
