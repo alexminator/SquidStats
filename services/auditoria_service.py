@@ -14,6 +14,22 @@ sys.path.append(str(project_root))
 
 from database.database import get_session, get_engine
 
+# --- INICIO DE LA MODIFICACIÓN ---
+# Se define un diccionario con los dominios clave de las redes sociales.
+# Esto centraliza la configuración y facilita futuras actualizaciones.
+SOCIAL_MEDIA_DOMAINS = {
+    'Facebook': [
+        'facebook.com', 'messenger.com', 'fb.com', 'fb.me', 'fbcdn.net', 'fbsbx.com',
+        'workplace.com', 'work.me', 'w.m.me'
+    ],
+    'Instagram': ['instagram.com', 'cdninstagram.com'],
+    'YouTube': ['youtube.com', 'googlevideo.com', 'ytimg.com', 'youtu.be'],
+    'Twitter/X': ['twitter.com', 'x.com', 't.co'],
+    'WhatsApp': ['whatsapp.com', 'whatsapp.net', 'g.whatsapp.net', 'web.whatsapp.com', 'static.whatsapp.net'],
+    'Telegram': ['telegram.org', 'telegram.com', 'cdn.telegram.com', 'web.telegram.org']
+}
+# --- FIN DE LA MODIFICACIÓN ---
+
 def _get_tables_in_range(inspector, start_date: datetime, end_date: datetime) -> List[Tuple[str, str]]:
     """
     Función de ayuda para obtener una lista de tuplas (tabla_log, tabla_user)
@@ -59,7 +75,6 @@ def _execute_union_query(db: Session, tables: List[Tuple[str, str]], where_claus
         print(f"Error en _execute_union_query: {e}")
         raise
 
-# --- INICIO DE LA MODIFICACIÓN ---
 def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, username: str = None) -> Dict[str, Any]:
     """
     Busca URLs que contengan una palabra clave y agrupa los resultados
@@ -73,7 +88,6 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
-        # Se añade l.data_transmitted para poder sumarlo
         select_clauses.append(
             f"SELECT u.username, u.ip, l.url, l.data_transmitted, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
@@ -85,7 +99,6 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         where_clause += " AND username = :username"
         params['username'] = username
 
-    # La consulta ahora también suma los datos y ordena por usuario para la agrupación
     full_query_str = f"""
         SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
@@ -102,9 +115,61 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         print(f"Error en find_by_keyword: {e}")
         raise
 
-def find_by_domain(db: Session, start_str: str, end_str: str, domain: str, username: str = None) -> Dict[str, Any]:
-    # La búsqueda por dominio ahora también se beneficia de la nueva estructura de datos
-    return find_by_keyword(db, start_str, end_str, domain, username)
+# --- INICIO DE LA MODIFICACIÓN ---
+# Nueva función para buscar actividad en redes sociales.
+def find_social_media_activity(db: Session, start_str: str, end_str: str, sites: List[str], username: str = None) -> Dict[str, Any]:
+    """
+    Busca actividad en dominios de redes sociales seleccionados.
+    La búsqueda usa comodines (LIKE %domain%) para capturar subdominios.
+    """
+    start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
+    inspector = inspect(db.get_bind())
+    tables = _get_tables_in_range(inspector, start_date, end_date)
+    if not tables: return {"error": "No hay datos para las fechas seleccionadas."}
+
+    # Recolecta todos los dominios de las redes sociales seleccionadas.
+    domain_list = []
+    for site_name in sites:
+        if site_name in SOCIAL_MEDIA_DOMAINS:
+            domain_list.extend(SOCIAL_MEDIA_DOMAINS[site_name])
+    
+    if not domain_list:
+        return {"error": "No se especificaron dominios válidos para la búsqueda."}
+
+    # Crea las condiciones LIKE para la cláusula WHERE de SQL.
+    # Cada condición busca si la URL contiene el dominio.
+    like_conditions = " OR ".join([f"url LIKE :domain{i}" for i in range(len(domain_list))])
+    where_clause = f"({like_conditions})"
+    params = {f'domain{i}': f'%{domain}%' for i, domain in enumerate(domain_list)}
+
+    if username:
+        where_clause += " AND username = :username"
+        params['username'] = username
+
+    select_clauses = []
+    for log_table, user_table in tables:
+        date_str = log_table.split('_')[1]
+        select_clauses.append(
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, '{date_str}' as log_date "
+            f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
+        )
+    
+    # La consulta es similar a las otras búsquedas, agrupando resultados.
+    full_query_str = f"""
+        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
+        FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
+        WHERE {where_clause}
+        GROUP BY log_date, username, ip, url
+        ORDER BY username, log_date DESC, access_count DESC
+        LIMIT 500 
+    """
+    
+    try:
+        results = db.execute(text(full_query_str), params).fetchall()
+        return {"results": [dict(row._mapping) for row in results]}
+    except SQLAlchemyError as e:
+        print(f"Error en find_social_media_activity: {e}")
+        raise
 # --- FIN DE LA MODIFICACIÓN ---
 
 def find_file_downloads(db: Session, start_str: str, end_str: str, username: str = None) -> Dict[str, Any]:

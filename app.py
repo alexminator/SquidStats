@@ -26,7 +26,8 @@ from services.get_reports import get_important_metrics, get_metrics_by_date_rang
 from utils.colors import color_map
 from utils.updateSquid import update_squid
 from utils.updateSquidStats import updateSquidStats
-# Importar las nuevas funciones de auditoría
+# --- INICIO DE LA MODIFICACIÓN ---
+# Se importa la nueva función de auditoría para redes sociales.
 from services.auditoria_service import (
     get_all_usernames,
     get_user_activity_summary,
@@ -34,8 +35,10 @@ from services.auditoria_service import (
     find_denied_access,
     find_by_keyword,
     find_by_ip,
-    find_by_response_code
+    find_by_response_code,
+    find_social_media_activity  # <--- NUEVA IMPORTACIÓN
 )
+# --- FIN DE LA MODIFICACIÓN ---
 from flask import jsonify
 # ------------------- PAQUETES ESTÁNDAR -------------------
 from dotenv import load_dotenv
@@ -498,6 +501,12 @@ def api_run_audit():
     keyword = data.get('keyword')
     ip_address = data.get('ip_address')
     response_code = data.get('response_code')
+    
+    # --- INICIO DE LA MODIFICACIÓN ---
+    # Se obtiene el parámetro social_media_sites del formulario.
+    # Puede ser una lista de sitios seleccionados.
+    social_media_sites = data.get('social_media_sites')
+    # --- FIN DE LA MODIFICACIÓN ---
 
     db = get_session()
     try:
@@ -511,6 +520,12 @@ def api_run_audit():
         elif audit_type == 'keyword_search':
             if not keyword: return jsonify({"error": "Se requiere una palabra clave."}), 400
             result = find_by_keyword(db, start_date, end_date, keyword, username)
+        # --- INICIO DE LA MODIFICACIÓN ---
+        # Se añade la lógica para manejar el nuevo tipo de auditoría.
+        elif audit_type == 'social_media_activity':
+            if not social_media_sites: return jsonify({"error": "Debe seleccionar al menos una red social."}), 400
+            result = find_social_media_activity(db, start_date, end_date, social_media_sites, username)
+        # --- FIN DE LA MODIFICACIÓN ---
         elif audit_type == 'ip_activity':
             if not ip_address: return jsonify({"error": "Se requiere una dirección IP."}), 400
             result = find_by_ip(db, start_date, end_date, ip_address)
