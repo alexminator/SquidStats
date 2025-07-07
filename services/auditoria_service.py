@@ -59,10 +59,11 @@ def _execute_union_query(db: Session, tables: List[Tuple[str, str]], where_claus
         print(f"Error en _execute_union_query: {e}")
         raise
 
+# --- INICIO DE LA MODIFICACIÓN ---
 def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, username: str = None) -> Dict[str, Any]:
     """
     Busca URLs que contengan una palabra clave y agrupa los resultados
-    por fecha, usuario, IP y URL, contando los accesos.
+    por fecha, usuario, IP y URL, contando los accesos y sumando los datos.
     """
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
@@ -72,8 +73,9 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
+        # Se añade l.data_transmitted para poder sumarlo
         select_clauses.append(
-            f"SELECT u.username, u.ip, l.url, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
     
@@ -83,12 +85,13 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         where_clause += " AND username = :username"
         params['username'] = username
 
+    # La consulta ahora también suma los datos y ordena por usuario para la agrupación
     full_query_str = f"""
-        SELECT log_date, username, ip, url, COUNT(*) as access_count
+        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
         GROUP BY log_date, username, ip, url
-        ORDER BY log_date DESC, access_count DESC
+        ORDER BY username, log_date DESC, access_count DESC
         LIMIT 500
     """
     
@@ -100,7 +103,9 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         raise
 
 def find_by_domain(db: Session, start_str: str, end_str: str, domain: str, username: str = None) -> Dict[str, Any]:
+    # La búsqueda por dominio ahora también se beneficia de la nueva estructura de datos
     return find_by_keyword(db, start_str, end_str, domain, username)
+# --- FIN DE LA MODIFICACIÓN ---
 
 def find_file_downloads(db: Session, start_str: str, end_str: str, username: str = None) -> Dict[str, Any]:
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
@@ -121,10 +126,6 @@ def find_file_downloads(db: Session, start_str: str, end_str: str, username: str
     return {"results": [dict(row._mapping) for row in results]}
 
 def find_by_ip(db: Session, start_str: str, end_str: str, ip_address: str) -> Dict[str, Any]:
-    """
-    Busca toda la actividad desde una IP, agrupando por fecha, usuario y URL.
-    Los resultados se ordenan por usuario y luego por fecha para facilitar la agrupación en el frontend.
-    """
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
@@ -134,16 +135,16 @@ def find_by_ip(db: Session, start_str: str, end_str: str, ip_address: str) -> Di
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
         select_clauses.append(
-            f"SELECT u.username, l.url, l.data_transmitted, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id WHERE u.ip = :ip_address"
         )
     
     params = {'ip_address': ip_address}
     
     full_query_str = f"""
-        SELECT log_date, username, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
+        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
-        GROUP BY log_date, username, url
+        GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
         LIMIT 500
     """
@@ -155,11 +156,7 @@ def find_by_ip(db: Session, start_str: str, end_str: str, ip_address: str) -> Di
         print(f"Error en find_by_ip: {e}")
         raise
 
-# --- INICIO DE LA MODIFICACIÓN ---
 def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, username: str = None) -> Dict[str, Any]:
-    """
-    Busca peticiones por código de respuesta, agrupando por usuario, fecha y URL.
-    """
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
@@ -168,9 +165,8 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
-        # CORRECCIÓN: Se añade l.response a la lista de columnas seleccionadas en la subconsulta.
         select_clauses.append(
-            f"SELECT u.username, l.url, l.data_transmitted, l.response, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.response, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
     
@@ -181,10 +177,10 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
         params['username'] = username
     
     full_query_str = f"""
-        SELECT log_date, username, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
+        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
-        GROUP BY log_date, username, url
+        GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
         LIMIT 500
     """
@@ -195,7 +191,6 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
     except SQLAlchemyError as e:
         print(f"Error en find_by_response_code: {e}")
         raise
-# --- FIN DE LA MODIFICACIÓN ---
 
 def get_all_usernames(db: Session) -> List[str]:
     engine = db.get_bind()
