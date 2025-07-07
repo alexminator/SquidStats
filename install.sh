@@ -85,18 +85,6 @@ function checkPackages() {
     fi
 }
 
-function checkSquidLog() {
-    local log_file="/var/log/squid/access.log"
-
-    if [ ! -f "$log_file" ]; then
-        error "¡ADVERTENCIA!: No hemos encontrado el log en la ruta por defecto. Recargue su squid, navegue y genere logs para crearlo"
-        return 1
-    else
-        echo "Archivo de log de Squid encontrado: $log_file"
-        return 0
-    fi
-}
-
 function updateOrCloneRepo() {
     local repo_url="https://github.com/alexminator/SquidStats.git"
     local destino="/opt/squidstats"
@@ -181,16 +169,18 @@ function createEnvFile() {
         return 0
     else
         echo "Creando archivo de configuración .env..."
+        # --- INICIO DE LA MODIFICACIÓN: Apuntar SQUID_LOG al nuevo fichero ---
         cat > "$env_file" << EOF
 VERSION=2
 SQUID_HOST=127.0.0.1
 SQUID_PORT=3128
 FLASK_DEBUG=True
 DATABASE_TYPE=SQLITE
-SQUID_LOG=/var/log/squid/access.log
+SQUID_LOG=/var/log/squid/squidstats.log
 DATABASE_STRING_CONNECTION=/opt/squidstats/squidstats.db
 REFRESH_INTERVAL=60
 EOF
+        # --- FIN DE LA MODIFICACIÓN ---
         ok "Archivo .env creado correctamente en $env_file"
         return 0
     fi
@@ -263,7 +253,6 @@ function configureDatabase() {
                 if [[ $exit_code -eq 0 ]]; then
                     sed -i "s|^DATABASE_TYPE=.*|DATABASE_TYPE=MARIADB|" "$env_file"
 
-                    # validation_result tiene la cadena codificada, escapamos para sed
                     escaped_conn_str=$(printf '%s\n' "$validation_result" | sed -e 's/[\/&]/\\&/g')
                     sed -i "s|^DATABASE_STRING_CONNECTION=.*|DATABASE_STRING_CONNECTION=$escaped_conn_str|" "$env_file"
 
@@ -283,6 +272,7 @@ function configureDatabase() {
     esac
 }
 
+# --- INICIO DE LA MODIFICACIÓN: La función ahora añade un log en vez de modificar el existente ---
 function patchSquidConf() {
     local squid_conf=""
 
@@ -298,30 +288,25 @@ function patchSquidConf() {
     cp "$squid_conf" "${squid_conf}.back"
     ok "Backup realizado: ${squid_conf}.back"
 
-    # Añade logformat solo si no existe
+    # Añade el formato de log 'detailed' solo si no existe
     if ! grep -q '^logformat[[:space:]]\+detailed' "$squid_conf"; then
-        cat << 'EOF' >> "$squid_conf"
-
-logformat detailed %ts.%03tu|%>a|%ui|%un|[%tl]|%rm|%ru|HTTP/%rv|%>Hs|%<st|%mt|%<a|%<rm|%Ss/%Sh
-EOF
+        echo -e "\n# Formato de log para SquidStats\nlogformat detailed %ts.%03tu|%>a|%ui|%un|[%tl]|%rm|%ru|HTTP/%rv|%>Hs|%<st|%mt|%<a|%<rm|%Ss/%Sh" >> "$squid_conf"
         ok "Se agregó logformat detailed"
     else
         echo "logformat detailed ya existe."
     fi
 
-    # Modificar access_log para asegurar que tenga detailed !manager
-    if grep -q '^access_log[[:space:]]\+/var/log/squid/access\.log' "$squid_conf"; then
-        sed -i '/^access_log[[:space:]]\+\/var\/log\/squid\/access\.log/{
-            s/detailed//g
-            s/!manager//g
-            s/$/ detailed !manager/
-        }' "$squid_conf"
-        ok "access_log actualizado con detailed !manager"
+    # Añade la directiva para el nuevo fichero de log de SquidStats si no existe
+    local stats_log_directive="access_log daemon:/var/log/squid/squidstats.log detailed !manager"
+    if ! grep -q 'squidstats\.log' "$squid_conf"; then
+        echo "Añadiendo directiva de log para SquidStats..."
+        echo -e "\n# Log para SquidStats\n$stats_log_directive" >> "$squid_conf"
+        ok "Se agregó la directiva de log para squidstats.log"
     else
-        echo 'access_log /var/log/squid/access.log detailed !manager' >> "$squid_conf"
-        ok "access_log agregado con detailed !manager"
+        echo "La directiva de log para SquidStats ya existe."
     fi
 }
+# --- FIN DE LA MODIFICACIÓN ---
 
 function main() {
     checkSudo
@@ -329,6 +314,8 @@ function main() {
      if [ "$1" = "--update" ]; then
       echo "Actualizando Servicio..."
       updateOrCloneRepo
+      patchSquidConf
+      systemctl restart squid.service
       systemctl restart squidstats.service
 
       ok "Actualizacion completada! Acceda en: \033[1;37mhttp://IP:5000\033[0m"
@@ -337,13 +324,16 @@ function main() {
       checkPackages
       updateOrCloneRepo
       patchSquidConf
-      checkSquidLog
       setupVenv
       installDependencies
       createEnvFile
       configureDatabase
       moveDB
       createService
+
+      # Reiniciar squid para aplicar cambios en squid.conf
+      echo "Reiniciando Squid para aplicar la nueva configuración de logs..."
+      systemctl restart squid.service
 
       ok "Instalación completada! Acceda en: \033[1;37mhttp://IP:5000\033[0m"
     fi
