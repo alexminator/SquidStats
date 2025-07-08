@@ -384,18 +384,14 @@ document.addEventListener('DOMContentLoaded', function() {
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
     }
 
-    // --- INICIO DE LA CORRECCIÓN: Función final para formatear la hora manualmente ---
     function formatTime(datetimeString) {
         if (!datetimeString || typeof datetimeString !== 'string') {
             return '--';
         }
         
         try {
-            // Dado que el formato es "Wed, 02 Jul 2025 13:58:01 GMT",
-            // dividimos la cadena por espacios para aislar la parte de la hora.
             const parts = datetimeString.split(' ');
             
-            // La hora (HH:MM:SS) es el quinto elemento en este formato.
             if (parts.length < 5) {
                 return '--'; 
             }
@@ -408,10 +404,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 return '--';
             }
 
-            // Convertir a formato 12h con AM/PM
             const ampm = hour >= 12 ? 'PM' : 'AM';
             hour = hour % 12;
-            hour = hour || 12; // La hora 0 se convierte en 12
+            hour = hour || 12;
 
             const formattedHour = String(hour).padStart(2, '0');
             
@@ -422,8 +417,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return '--';
         }
     }
-    // --- FIN DE LA CORRECCIÓN ---
 
+    // --- INICIO DE LA MODIFICACIÓN: Columnas de la tabla de resultados reordenadas ---
     function renderNestedAccordionResults(title, results) {
         if (!results || results.length === 0) {
             return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros.</p></div>`;
@@ -472,8 +467,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <table class="w-full text-left text-sm mt-2">
                                     <thead class="border-b-2 border-gray-300">
                                         <tr>
-                                            <th class="py-1 px-2">URL / IP</th>
                                             <th class="py-1 px-2 text-center">Hora (Últ. Acceso)</th>
+                                            <th class="py-1 px-2">URL</th>
                                             <th class="py-1 px-2 text-center">Intentos</th>
                                             <th class="py-1 px-2">Datos</th>
                                         </tr>
@@ -482,11 +477,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 const ensureProtocol = (url) => url.startsWith('http') ? url : `http://${url}`;
                 dateData.activities.forEach(activity => {
                     html += `<tr class="hover:bg-gray-50">
+                                <td class="py-1 px-2 text-center font-mono text-xs">${formatTime(activity.last_seen)}</td>
                                 <td class="py-1 px-2 truncate">
                                     <a href="${ensureProtocol(activity.url)}" target="_blank" class="text-blue-600 hover:underline" title="${activity.url}">${activity.url}</a>
-                                    <span class="text-xs text-gray-400 block">${activity.ip || ''}</span>
                                 </td>
-                                <td class="py-1 px-2 text-center font-mono text-xs">${formatTime(activity.last_seen)}</td>
                                 <td class="py-1 px-2 text-center">${activity.access_count}</td>
                                 <td class="py-1 px-2">${formatBytes(activity.total_data)}</td>
                             </tr>`;
@@ -497,6 +491,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return html;
     }
+    // --- FIN DE LA MODIFICACIÓN ---
     
     function renderUserSummary(data) {
         const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join('');
