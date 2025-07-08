@@ -15,18 +15,39 @@ sys.path.append(str(project_root))
 from database.database import get_session, get_engine
 
 # --- INICIO DE LA MODIFICACIÓN ---
-# Se define un diccionario con los dominios clave de las redes sociales.
-# Esto centraliza la configuración y facilita futuras actualizaciones.
+# Se actualizan las listas de dominios para todas las redes sociales y se añade Pinterest.
 SOCIAL_MEDIA_DOMAINS = {
-    'Facebook': [
-        'facebook.com', 'messenger.com', 'fb.com', 'fb.me', 'fbcdn.net', 'fbsbx.com',
-        'workplace.com', 'work.me', 'w.m.me'
+    'YouTube': [
+        'googleusercontent.com/youtube.com/0', 'ytimg.com', 'googlevideo.com', 'yt3.ggpht.com', 
+        'youtubei.googleapis.com', 'youtube-ui.l.google.com', 'youtube.googleapis.com'
     ],
-    'Instagram': ['instagram.com', 'cdninstagram.com'],
-    'YouTube': ['youtube.com', 'googlevideo.com', 'ytimg.com', 'youtu.be'],
-    'Twitter/X': ['twitter.com', 'x.com', 't.co'],
-    'WhatsApp': ['whatsapp.com', 'whatsapp.net', 'g.whatsapp.net', 'web.whatsapp.com', 'static.whatsapp.net'],
-    'Telegram': ['telegram.org', 'telegram.com', 'cdn.telegram.com', 'web.telegram.org']
+    'Facebook': [
+        'facebook.com', 'fbcdn.net', 'facebook.net', 'fbsbx.com', 'fbpigeon.com', 
+        'fb.com', 'facebook-hardware.com'
+    ],
+    'Pinterest': [
+        'pinterest.com', 'pinimg.com', 'cdx.cedexis.net', 'pinterest.net', 
+        'pinterest.pt', 'pinterest.cl', 'pinterest.info'
+    ],
+    'Instagram': [
+        'instagram.com', 'cdninstagram.com', 'z-p42-chat-e2ee-ig.facebook.com', 
+        'mqtt-ig-p4.facebook.com', 'z-p42-chat-e2ee-ig-fallback.facebook.com', 
+        'ig.me', 'instagram.am', 'igsonar.com'
+    ],
+    'Telegram': [
+        'telegram.org', 't.me', 'telegram.me', 'tg.dev', 'telesco.pe'
+    ],
+    'WhatsApp': [
+        'whatsapp.net', 'whatsapp.com', 'wa.me', 'wl.co', 'whatsappbrand.com', 
+        'whatsapp-plus.info', 'whatsapp-plus.me', 'whatsapp-plus.net', 
+        'whatsapp.cc', 'whatsapp.info', 'whatsapp.org', 'whatsapp.tv'
+    ],
+    'Twitter/X': [
+        'twitter.com', 't.co', 'anuncios-twitter.com', 'twimg.com', 'x.com', 
+        'pscp.tv', 'twtrdns.net', 'twttr.com', 'periscopio.tv', 'twitpic.com', 
+        'tweetdeck.com', 'twitter.co', 'twitterinc.com', 'twitteroauth.com', 
+        'twitterstat.us'
+    ]
 }
 # --- FIN DE LA MODIFICACIÓN ---
 
@@ -115,19 +136,16 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         print(f"Error en find_by_keyword: {e}")
         raise
 
-# --- INICIO DE LA MODIFICACIÓN ---
-# Nueva función para buscar actividad en redes sociales.
 def find_social_media_activity(db: Session, start_str: str, end_str: str, sites: List[str], username: str = None) -> Dict[str, Any]:
     """
-    Busca actividad en dominios de redes sociales seleccionados.
-    La búsqueda usa comodines (LIKE %domain%) para capturar subdominios.
+    Busca actividad en dominios de redes sociales usando patrones de búsqueda precisos
+    para evitar falsos positivos con dominios cortos como 'x.com'.
     """
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
     if not tables: return {"error": "No hay datos para las fechas seleccionadas."}
 
-    # Recolecta todos los dominios de las redes sociales seleccionadas.
     domain_list = []
     for site_name in sites:
         if site_name in SOCIAL_MEDIA_DOMAINS:
@@ -136,11 +154,29 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
     if not domain_list:
         return {"error": "No se especificaron dominios válidos para la búsqueda."}
 
-    # Crea las condiciones LIKE para la cláusula WHERE de SQL.
-    # Cada condición busca si la URL contiene el dominio.
-    like_conditions = " OR ".join([f"url LIKE :domain{i}" for i in range(len(domain_list))])
-    where_clause = f"({like_conditions})"
-    params = {f'domain{i}': f'%{domain}%' for i, domain in enumerate(domain_list)}
+    like_conditions = []
+    params = {}
+    param_index = 0
+    for domain in domain_list:
+        condition_group = (
+            f"url LIKE :p{param_index}_sub_slash OR "
+            f"url LIKE :p{param_index}_sub_colon OR "
+            f"url LIKE :p{param_index}_sub_exact OR "
+            f"url LIKE :p{param_index}_proto_slash OR "
+            f"url LIKE :p{param_index}_proto_colon OR "
+            f"url LIKE :p{param_index}_proto_exact"
+        )
+        like_conditions.append(f"({condition_group})")
+        
+        params[f'p{param_index}_sub_slash'] = f'%.{domain}/%'
+        params[f'p{param_index}_sub_colon'] = f'%.{domain}:%'
+        params[f'p{param_index}_sub_exact'] = f'%.{domain}'
+        params[f'p{param_index}_proto_slash'] = f'%//{domain}/%'
+        params[f'p{param_index}_proto_colon'] = f'%//{domain}:%'
+        params[f'p{param_index}_proto_exact'] = f'%//{domain}'
+        param_index += 1
+
+    where_clause = f"({' OR '.join(like_conditions)})"
 
     if username:
         where_clause += " AND username = :username"
@@ -154,7 +190,6 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
     
-    # La consulta es similar a las otras búsquedas, agrupando resultados.
     full_query_str = f"""
         SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
@@ -170,7 +205,6 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
     except SQLAlchemyError as e:
         print(f"Error en find_social_media_activity: {e}")
         raise
-# --- FIN DE LA MODIFICACIÓN ---
 
 def find_file_downloads(db: Session, start_str: str, end_str: str, username: str = None) -> Dict[str, Any]:
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')

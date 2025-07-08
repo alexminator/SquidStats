@@ -55,6 +55,8 @@
         transform: translateX(-50%) scale(1);
     }
 </style>
+
+
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex items-center mb-6 border-b pb-4">
         <i class="fas fa-magnifying-glass text-3xl text-blue-600 mr-4"></i>
@@ -128,8 +130,12 @@
                                 <button type="button" class="social-chip" data-value="Telegram">Telegram</button>
                                 <span class="tooltip">Selección múltiple</span>
                             </div>
+                             <div class="relative group">
+                                <button type="button" class="social-chip" data-value="Pinterest">Pinterest</button>
+                                <span class="tooltip">Selección múltiple</span>
+                            </div>
                         </div>
-                    </div>
+                        </div>
                     <div id="response-code-input-container" class="conditional-input">
                         <label for="response-code-input" class="block text-sm font-semibold text-gray-700 mb-1">Código HTTP</label>
                         <select id="response-code-input" name="response_code" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50">
@@ -164,7 +170,7 @@
                 </button>
             </div>
         </form>
-         </div>
+    </div>
 
     <div id="audit-results-container" class="space-y-4">
         <div class="bg-white p-6 rounded-lg shadow-lg min-h-[300px] flex items-center justify-center">
@@ -210,7 +216,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     resultsContainer.innerHTML = defaultResultsHTML;
 
-    // --- INICIO DE LA MODIFICACIÓN: Se ajusta para ocultar el div contenedor ---
     const conditionalInputs = {
         user: document.getElementById('user-filter-container'),
         user_optional: document.getElementById('user-filter-container'),
@@ -219,7 +224,6 @@ document.addEventListener('DOMContentLoaded', function() {
         response_code: document.getElementById('response-code-input-container'),
         social_media: document.getElementById('social-media-input-container')
     };
-    // --- FIN DE LA MODIFICACIÓN ---
 
     const today = new Date();
     const sevenDaysAgo = new Date();
@@ -240,7 +244,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function toggleConditionalInputs() {
         resultsContainer.innerHTML = defaultResultsHTML;
-        // Ocultar todos los contenedores condicionales
         Object.values(conditionalInputs).forEach(el => {
             if (el) el.style.display = 'none';
         });
@@ -249,7 +252,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const auditType = selectedOption.value;
         const required = selectedOption.dataset.requires?.split(',') || [];
 
-        // Mostrar solo los requeridos
         required.forEach(inputId => {
             if (conditionalInputs[inputId]) {
                 conditionalInputs[inputId].style.display = 'block';
