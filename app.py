@@ -432,22 +432,13 @@ def get_logs_by_date():
         date_str = data.get('date')
         page = data.get('page', 1)
         per_page = data.get('per_page', 15)
-        # --- INICIO DE LA MODIFICACIÓN ---
-        # Se obtiene el término de búsqueda desde la petición JSON del frontend.
-        # Si no se envía, su valor es None.
         search_query = data.get('search', None)
-        # --- FIN DE LA MODIFICACIÓN ---
         selected_date = datetime.strptime(date_str, '%Y-%m-%d')
         date_suffix = selected_date.strftime('%Y%m%d')
 
         db = get_session()
-        # --- INICIO DE LA MODIFICACIÓN ---
-        # Se pasa el nuevo parámetro 'search_query' a la función que obtiene los datos.
         users_data = get_users_logs(db, date_suffix, page=page, per_page=per_page, search_query=search_query)
-        # Se devuelve el objeto de paginación COMPLETO, que incluye 'total_pages', 'page', etc.
-        # Esto es fundamental para que el frontend pueda construir los controles de paginación.
         return jsonify(users_data)
-        # --- FIN DE LA MODIFICACIÓN ---
     except ValueError:
         return jsonify({'error': 'Formato de fecha inválido'}), 400
     except Exception as e:
@@ -520,12 +511,9 @@ def api_run_audit():
         elif audit_type == 'keyword_search':
             if not keyword: return jsonify({"error": "Se requiere una palabra clave."}), 400
             result = find_by_keyword(db, start_date, end_date, keyword, username)
-        # --- INICIO DE LA MODIFICACIÓN ---
-        # Se añade la lógica para manejar el nuevo tipo de auditoría.
         elif audit_type == 'social_media_activity':
             if not social_media_sites: return jsonify({"error": "Debe seleccionar al menos una red social."}), 400
             result = find_social_media_activity(db, start_date, end_date, social_media_sites, username)
-        # --- FIN DE LA MODIFICACIÓN ---
         elif audit_type == 'ip_activity':
             if not ip_address: return jsonify({"error": "Se requiere una dirección IP."}), 400
             result = find_by_ip(db, start_date, end_date, ip_address)

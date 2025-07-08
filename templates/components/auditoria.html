@@ -130,12 +130,12 @@
                                 <button type="button" class="social-chip" data-value="Telegram">Telegram</button>
                                 <span class="tooltip">Selección múltiple</span>
                             </div>
-                             <div class="relative group">
+                            <div class="relative group">
                                 <button type="button" class="social-chip" data-value="Pinterest">Pinterest</button>
                                 <span class="tooltip">Selección múltiple</span>
                             </div>
                         </div>
-                        </div>
+                    </div>
                     <div id="response-code-input-container" class="conditional-input">
                         <label for="response-code-input" class="block text-sm font-semibold text-gray-700 mb-1">Código HTTP</label>
                         <select id="response-code-input" name="response_code" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50">
@@ -384,6 +384,46 @@ document.addEventListener('DOMContentLoaded', function() {
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
     }
 
+    // --- INICIO DE LA CORRECCIÓN: Función final para formatear la hora manualmente ---
+    function formatTime(datetimeString) {
+        if (!datetimeString || typeof datetimeString !== 'string') {
+            return '--';
+        }
+        
+        try {
+            // Dado que el formato es "Wed, 02 Jul 2025 13:58:01 GMT",
+            // dividimos la cadena por espacios para aislar la parte de la hora.
+            const parts = datetimeString.split(' ');
+            
+            // La hora (HH:MM:SS) es el quinto elemento en este formato.
+            if (parts.length < 5) {
+                return '--'; 
+            }
+            const timePart = parts[4]; 
+
+            const [hoursStr, minutesStr, secondsStr] = timePart.split(':');
+            
+            let hour = parseInt(hoursStr, 10);
+            if (isNaN(hour)) {
+                return '--';
+            }
+
+            // Convertir a formato 12h con AM/PM
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            hour = hour % 12;
+            hour = hour || 12; // La hora 0 se convierte en 12
+
+            const formattedHour = String(hour).padStart(2, '0');
+            
+            return `${formattedHour}:${minutesStr}:${secondsStr} ${ampm}`;
+
+        } catch (error) {
+            console.error("Error crítico al formatear la hora:", error, "Input was:", datetimeString);
+            return '--';
+        }
+    }
+    // --- FIN DE LA CORRECCIÓN ---
+
     function renderNestedAccordionResults(title, results) {
         if (!results || results.length === 0) {
             return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros.</p></div>`;
@@ -433,6 +473,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <thead class="border-b-2 border-gray-300">
                                         <tr>
                                             <th class="py-1 px-2">URL / IP</th>
+                                            <th class="py-1 px-2 text-center">Hora (Últ. Acceso)</th>
                                             <th class="py-1 px-2 text-center">Intentos</th>
                                             <th class="py-1 px-2">Datos</th>
                                         </tr>
@@ -445,6 +486,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <a href="${ensureProtocol(activity.url)}" target="_blank" class="text-blue-600 hover:underline" title="${activity.url}">${activity.url}</a>
                                     <span class="text-xs text-gray-400 block">${activity.ip || ''}</span>
                                 </td>
+                                <td class="py-1 px-2 text-center font-mono text-xs">${formatTime(activity.last_seen)}</td>
                                 <td class="py-1 px-2 text-center">${activity.access_count}</td>
                                 <td class="py-1 px-2">${formatBytes(activity.total_data)}</td>
                             </tr>`;

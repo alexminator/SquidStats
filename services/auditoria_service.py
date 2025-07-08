@@ -14,82 +14,71 @@ sys.path.append(str(project_root))
 
 from database.database import get_session, get_engine
 
-# --- INICIO DE LA MODIFICACIÓN ---
-# Se actualizan las listas de dominios para todas las redes sociales y se añade Pinterest.
 SOCIAL_MEDIA_DOMAINS = {
     'YouTube': [
-        'googleusercontent.com/youtube.com/0', 'ytimg.com', 'googlevideo.com', 'yt3.ggpht.com', 
+        'youtube.com', 'ytimg.com', 'googlevideo.com', 'yt3.ggpht.com',
         'youtubei.googleapis.com', 'youtube-ui.l.google.com', 'youtube.googleapis.com'
     ],
     'Facebook': [
-        'facebook.com', 'fbcdn.net', 'facebook.net', 'fbsbx.com', 'fbpigeon.com', 
+        'facebook.com', 'fbcdn.net', 'facebook.net', 'fbsbx.com', 'fbpigeon.com',
         'fb.com', 'facebook-hardware.com'
     ],
     'Pinterest': [
-        'pinterest.com', 'pinimg.com', 'cdx.cedexis.net', 'pinterest.net', 
+        'pinterest.com', 'pinimg.com', 'cdx.cedexis.net', 'pinterest.net',
         'pinterest.pt', 'pinterest.cl', 'pinterest.info'
     ],
     'Instagram': [
-        'instagram.com', 'cdninstagram.com', 'z-p42-chat-e2ee-ig.facebook.com', 
-        'mqtt-ig-p4.facebook.com', 'z-p42-chat-e2ee-ig-fallback.facebook.com', 
+        'instagram.com', 'cdninstagram.com', 'z-p42-chat-e2ee-ig.facebook.com',
+        'mqtt-ig-p4.facebook.com', 'z-p42-chat-e2ee-ig-fallback.facebook.com',
         'ig.me', 'instagram.am', 'igsonar.com'
     ],
     'Telegram': [
         'telegram.org', 't.me', 'telegram.me', 'tg.dev', 'telesco.pe'
     ],
     'WhatsApp': [
-        'whatsapp.net', 'whatsapp.com', 'wa.me', 'wl.co', 'whatsappbrand.com', 
-        'whatsapp-plus.info', 'whatsapp-plus.me', 'whatsapp-plus.net', 
+        'whatsapp.net', 'whatsapp.com', 'wa.me', 'wl.co', 'whatsappbrand.com',
+        'whatsapp-plus.info', 'whatsapp-plus.me', 'whatsapp-plus.net',
         'whatsapp.cc', 'whatsapp.info', 'whatsapp.org', 'whatsapp.tv'
     ],
     'Twitter/X': [
-        'twitter.com', 't.co', 'anuncios-twitter.com', 'twimg.com', 'x.com', 
-        'pscp.tv', 'twtrdns.net', 'twttr.com', 'periscopio.tv', 'twitpic.com', 
-        'tweetdeck.com', 'twitter.co', 'twitterinc.com', 'twitteroauth.com', 
+        'twitter.com', 't.co', 'anuncios-twitter.com', 'twimg.com', 'x.com',
+        'pscp.tv', 'twtrdns.net', 'twttr.com', 'periscopio.tv', 'twitpic.com',
+        'tweetdeck.com', 'twitter.co', 'twitterinc.com', 'twitteroauth.com',
         'twitterstat.us'
     ]
 }
-# --- FIN DE LA MODIFICACIÓN ---
 
 def _get_tables_in_range(inspector, start_date: datetime, end_date: datetime) -> List[Tuple[str, str]]:
-    """
-    Función de ayuda para obtener una lista de tuplas (tabla_log, tabla_user)
-    que existen en la base de datos dentro del rango de fechas especificado.
-    """
     all_db_tables = inspector.get_table_names()
     log_tables_in_range = []
-    
     current_date = start_date
     while current_date <= end_date:
         date_suffix = current_date.strftime("%Y%m%d")
         log_table = f'log_{date_suffix}'
         user_table = f'user_{date_suffix}'
-        
         if log_table in all_db_tables and user_table in all_db_tables:
             log_tables_in_range.append((log_table, user_table))
-            
         current_date += timedelta(days=1)
-        
     return log_tables_in_range
 
 def _execute_union_query(db: Session, tables: List[Tuple[str, str]], where_clause: str, params: Dict, order_by: str) -> List[Any]:
-    """Ejecuta una consulta UNION ALL a través de múltiples tablas con un WHERE y ORDER BY dinámicos."""
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
+        # --- INICIO DE LA CORRECCIÓN: Se usa la columna 'created_at' en lugar de 'timestamp' ---
         select_clauses.append(
-            f"SELECT u.username, u.ip, l.url, l.response, l.data_transmitted, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.response, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
+        # --- FIN DE LA CORRECCIÓN ---
     
     full_query_str = f"""
-        SELECT username, ip, url, response, data_transmitted, log_date
+        SELECT username, ip, url, response, data_transmitted, created_at, log_date
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
         ORDER BY {order_by}
         LIMIT 500
     """
-    
     try:
         return db.execute(text(full_query_str), params).fetchall()
     except SQLAlchemyError as e:
@@ -97,10 +86,6 @@ def _execute_union_query(db: Session, tables: List[Tuple[str, str]], where_claus
         raise
 
 def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, username: str = None) -> Dict[str, Any]:
-    """
-    Busca URLs que contengan una palabra clave y agrupa los resultados
-    por fecha, usuario, IP y URL, contando los accesos y sumando los datos.
-    """
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
@@ -109,11 +94,13 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
+        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
-            f"SELECT u.username, u.ip, l.url, l.data_transmitted, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
-    
+        # --- FIN DE LA CORRECCIÓN ---
+
     where_clause = "url LIKE :keyword"
     params = {'keyword': f'%{keyword}%'}
     if username:
@@ -121,14 +108,13 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         params['username'] = username
 
     full_query_str = f"""
-        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
+        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data, MAX(created_at) as last_seen
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
         GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
         LIMIT 500
     """
-    
     try:
         results = db.execute(text(full_query_str), params).fetchall()
         return {"results": [dict(row._mapping) for row in results]}
@@ -137,10 +123,6 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         raise
 
 def find_social_media_activity(db: Session, start_str: str, end_str: str, sites: List[str], username: str = None) -> Dict[str, Any]:
-    """
-    Busca actividad en dominios de redes sociales usando patrones de búsqueda precisos
-    para evitar falsos positivos con dominios cortos como 'x.com'.
-    """
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
@@ -150,7 +132,6 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
     for site_name in sites:
         if site_name in SOCIAL_MEDIA_DOMAINS:
             domain_list.extend(SOCIAL_MEDIA_DOMAINS[site_name])
-    
     if not domain_list:
         return {"error": "No se especificaron dominios válidos para la búsqueda."}
 
@@ -167,7 +148,6 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
             f"url LIKE :p{param_index}_proto_exact"
         )
         like_conditions.append(f"({condition_group})")
-        
         params[f'p{param_index}_sub_slash'] = f'%.{domain}/%'
         params[f'p{param_index}_sub_colon'] = f'%.{domain}:%'
         params[f'p{param_index}_sub_exact'] = f'%.{domain}'
@@ -177,7 +157,6 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
         param_index += 1
 
     where_clause = f"({' OR '.join(like_conditions)})"
-
     if username:
         where_clause += " AND username = :username"
         params['username'] = username
@@ -185,44 +164,29 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
+        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
-            f"SELECT u.username, u.ip, l.url, l.data_transmitted, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
+        # --- FIN DE LA CORRECCIÓN ---
     
+    # --- INICIO DE LA CORRECCIÓN: Se usa MAX(created_at) en la consulta principal ---
     full_query_str = f"""
-        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
+        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data, MAX(created_at) as last_seen
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
         GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
         LIMIT 500 
     """
-    
+    # --- FIN DE LA CORRECCIÓN ---
     try:
         results = db.execute(text(full_query_str), params).fetchall()
         return {"results": [dict(row._mapping) for row in results]}
     except SQLAlchemyError as e:
         print(f"Error en find_social_media_activity: {e}")
         raise
-
-def find_file_downloads(db: Session, start_str: str, end_str: str, username: str = None) -> Dict[str, Any]:
-    start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
-    inspector = inspect(db.get_bind())
-    tables = _get_tables_in_range(inspector, start_date, end_date)
-    if not tables: return {"error": "No hay datos para las fechas seleccionadas."}
-
-    extensions = ['.exe', '.zip', '.rar', '.bat', '.scr', '.msi']
-    like_conditions = " OR ".join([f"url LIKE :ext{i}" for i in range(len(extensions))])
-    where_clause = f"({like_conditions})"
-    params = {f'ext{i}': f'%{ext}' for i, ext in enumerate(extensions)}
-
-    if username:
-        where_clause += " AND username = :username"
-        params['username'] = username
-        
-    results = _execute_union_query(db, tables, where_clause, params, "log_date DESC, username")
-    return {"results": [dict(row._mapping) for row in results]}
 
 def find_by_ip(db: Session, start_str: str, end_str: str, ip_address: str) -> Dict[str, Any]:
     start_date, end_date = datetime.strptime(start_str, '%Y-%m-%d'), datetime.strptime(end_str, '%Y-%m-%d')
@@ -233,21 +197,24 @@ def find_by_ip(db: Session, start_str: str, end_str: str, ip_address: str) -> Di
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
+        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
-            f"SELECT u.username, u.ip, l.url, l.data_transmitted, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id WHERE u.ip = :ip_address"
         )
+        # --- FIN DE LA CORRECCIÓN ---
     
     params = {'ip_address': ip_address}
     
+    # --- INICIO DE LA CORRECCIÓN: Se usa MAX(created_at) en la consulta principal ---
     full_query_str = f"""
-        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
+        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data, MAX(created_at) as last_seen
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
         LIMIT 500
     """
-    
+    # --- FIN DE LA CORRECCIÓN ---
     try:
         results = db.execute(text(full_query_str), params).fetchall()
         return {"results": [dict(row._mapping) for row in results]}
@@ -264,10 +231,12 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
+        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
-            f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.response, '{date_str}' as log_date "
+            f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.response, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
+        # --- FIN DE LA CORRECCIÓN ---
     
     where_clause = "response = :code"
     params = {'code': code}
@@ -275,15 +244,16 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
         where_clause += " AND username = :username"
         params['username'] = username
     
+    # --- INICIO DE LA CORRECCIÓN: Se usa MAX(created_at) y se mantiene el GROUP BY por 'response' ---
     full_query_str = f"""
-        SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data
+        SELECT log_date, username, ip, url, response, COUNT(*) as access_count, SUM(data_transmitted) as total_data, MAX(created_at) as last_seen
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
-        GROUP BY log_date, username, ip, url
+        GROUP BY log_date, username, ip, url, response
         ORDER BY username, log_date DESC, access_count DESC
         LIMIT 500
     """
-    
+    # --- FIN DE LA CORRECCIÓN ---
     try:
         results = db.execute(text(full_query_str), params).fetchall()
         return {"results": [dict(row._mapping) for row in results]}
@@ -296,14 +266,11 @@ def get_all_usernames(db: Session) -> List[str]:
     inspector = inspect(engine)
     all_tables = inspector.get_table_names()
     user_tables = [t for t in all_tables if t.startswith('user_') and len(t) == 13]
-    
     if not user_tables:
         return []
-
     union_query = " UNION ".join([f"SELECT username FROM {table}" for table in user_tables])
     where_clause = "WHERE username IS NOT NULL AND username != '' AND username != '-'"
     full_query = text(f"SELECT DISTINCT username FROM ({union_query}) as all_users {where_clause} ORDER BY username")
-    
     try:
         result = db.execute(full_query).fetchall()
         return [row[0] for row in result]
@@ -316,7 +283,6 @@ def get_user_activity_summary(db: Session, username: str, start_str: str, end_st
     end_date = datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
-
     if not tables:
         return {"error": "No hay datos para las fechas seleccionadas."}
 
@@ -325,9 +291,7 @@ def get_user_activity_summary(db: Session, username: str, start_str: str, end_st
         select_clauses.append(
             f"SELECT l.url, l.data_transmitted, l.request_count, l.response FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id WHERE u.username = :username"
         )
-    
     full_query = text(" UNION ALL ".join(select_clauses))
-    
     try:
         results = db.execute(full_query, {'username': username}).fetchall()
         if not results:
@@ -336,27 +300,23 @@ def get_user_activity_summary(db: Session, username: str, start_str: str, end_st
         total_requests = sum(r.request_count for r in results)
         total_data = sum(r.data_transmitted for r in results)
         domain_counts = defaultdict(int)
-        response_counts = defaultdict(int) 
-        
+        response_counts = defaultdict(int)
         for row in results:
             try:
                 domain = row.url.split('//')[-1].split('/')[0].split(':')[0]
                 domain_counts[domain] += row.request_count
             except:
                 pass
-            
             response_counts[row.response] += row.request_count
 
         sorted_domains = sorted(domain_counts.items(), key=lambda item: item[1], reverse=True)
         sorted_responses = sorted(response_counts.items(), key=lambda item: item[1], reverse=True)
-        
         return {
             "total_requests": total_requests,
             "total_data_gb": round(total_data / (1024**3), 2),
             "top_domains": [{"domain": d, "count": c} for d, c in sorted_domains[:5]],
             "response_summary": [{"code": code, "count": count} for code, count in sorted_responses],
         }
-
     except SQLAlchemyError as e:
         return {"error": str(e)}
 
@@ -365,7 +325,6 @@ def get_top_users_by_data(db: Session, start_str: str, end_str: str, limit: int 
     end_date = datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
-
     if not tables:
         return {"error": "No hay datos para las fechas seleccionadas."}
 
@@ -374,7 +333,6 @@ def get_top_users_by_data(db: Session, start_str: str, end_str: str, limit: int 
         select_clauses.append(
             f"SELECT u.username, l.data_transmitted FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id WHERE u.username != '-'"
         )
-        
     full_query = text(f"""
         SELECT username, SUM(data_transmitted) as total_data
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
@@ -382,14 +340,12 @@ def get_top_users_by_data(db: Session, start_str: str, end_str: str, limit: int 
         ORDER BY total_data DESC
         LIMIT :limit
     """)
-    
     try:
         results = db.execute(full_query, {'limit': limit}).fetchall()
         top_users_list = [{
-            "username": r.username, 
+            "username": r.username,
             "total_data_gb": float(round((r.total_data or 0) / (1024**3), 2))
         } for r in results]
-        
         return {"top_users": top_users_list}
     except SQLAlchemyError as e:
         return {"error": str(e)}
@@ -399,7 +355,6 @@ def find_denied_access(db: Session, start_str: str, end_str: str, username: str 
     end_date = datetime.strptime(end_str, '%Y-%m-%d')
     inspector = inspect(db.get_bind())
     tables = _get_tables_in_range(inspector, start_date, end_date)
-
     if not tables:
         return {"error": "No hay datos para las fechas seleccionadas."}
 
@@ -408,6 +363,5 @@ def find_denied_access(db: Session, start_str: str, end_str: str, username: str 
     if username:
         where_clause += " AND username = :username"
         params['username'] = username
-
     results = _execute_union_query(db, tables, where_clause, params, "log_date DESC, username")
     return {"results": [dict(row._mapping) for row in results]}
