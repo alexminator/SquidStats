@@ -76,8 +76,8 @@
                         <optgroup label="Actividad General">
                             <option value="user_summary" data-requires="user">Resumen por Usuario</option>
                             <option value="top_users_data">Top 10 Usuarios (Datos)</option>
-                            <option value="daily_activity" data-requires="user">Actividad Diaria (Gráfica)</option>
-                            </optgroup>
+                            <option value="daily_activity" data-requires="user">Actividad Diaria</option>
+                        </optgroup>
                         <optgroup label="Seguridad y Políticas">
                             <option value="keyword_search" data-requires="user_optional,keyword">Búsqueda por Palabra Clave</option>
                             <option value="social_media_activity" data-requires="user_optional,social_media">Actividad en Redes Sociales</option>
@@ -259,30 +259,26 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // --- INICIO DE LA MODIFICACIÓN ---
         const userSelectContainer = conditionalInputs.user;
         const defaultUserOption = userSelectContainer.querySelector('select option[value=""]');
         
-        // Lógica para mostrar/ocultar campos de fecha
         if (auditType === 'daily_activity') {
             endDateContainer.style.display = 'none';
-            startDateContainer.querySelector('label').textContent = 'Fecha'; // Cambia el label a singular
+            startDateContainer.querySelector('label').textContent = 'Fecha';
         } else {
             endDateContainer.style.display = 'block';
-            startDateContainer.querySelector('label').textContent = 'Fecha de Inicio'; // Lo restaura
+            startDateContainer.querySelector('label').textContent = 'Fecha de Inicio';
         }
 
-        // Lógica para el selector de usuario
         if (auditType === 'user_summary' || auditType === 'daily_activity') {
             defaultUserOption.textContent = '-- Seleccione un Usuario --';
             defaultUserOption.disabled = true;
-            usernameSelect.value = ''; // Fuerza a que no haya nada seleccionado
+            usernameSelect.value = '';
         } else {
             defaultUserOption.textContent = '-- Todos --';
             const isOptional = required.includes('user_optional');
             defaultUserOption.disabled = !isOptional;
         }
-        // --- FIN DE LA MODIFICACIÓN ---
     }
 
     auditTypeSelect.addEventListener('change', toggleConditionalInputs);
@@ -355,19 +351,22 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (auditType === 'top_users_data') {
                 html = renderTopUsers(data);
             } 
+            // --- INICIO DE LA MODIFICACIÓN ---
             else if (auditType === 'daily_activity') {
-                const user = formData.username; // Ya no puede ser "Todos"
+                const user = formData.username;
                 const date = formData.start_date;
-                let title = `Tiempo de Actividad para '${user}' el ${date}`;
-                if (data.results && data.results.length > 0) {
+                let title = `Distribución de Peticiones para '${user}' el ${date}`;
+                if (data.total_requests > 0) {
                      html = `<div class="bg-white p-6 rounded-lg shadow-lg">
-                                <h2 class="text-2xl font-bold mb-4">${title}</h2>
+                                <h2 class="text-2xl font-bold mb-2">${title}</h2>
+                                <p class="text-gray-600 mb-4">Total de Peticiones en el día: <span class="font-bold text-blue-600">${data.total_requests.toLocaleString()}</span></p>
                                 <canvas id="daily-activity-chart"></canvas>
                              </div>`;
                 } else {
-                     html = `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros de actividad para la fecha y usuario seleccionado.</p></div>`;
+                     html = `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron peticiones para la fecha y usuario seleccionado.</p></div>`;
                 }
-            } 
+            }
+            // --- FIN DE LA MODIFICACIÓN ---
             else if (['keyword_search', 'ip_activity', 'response_code_search', 'social_media_activity'].includes(auditType)) {
                 let title = '';
                 if (auditType === 'keyword_search') {
@@ -392,8 +391,8 @@ document.addEventListener('DOMContentLoaded', function() {
         resultsContainer.innerHTML = html;
 
         const dailyActivityChartCanvas = document.getElementById('daily-activity-chart');
-        if (dailyActivityChartCanvas && data.results) {
-            renderDailyActivityChart(dailyActivityChartCanvas, data.results);
+        if (dailyActivityChartCanvas && data.hourly_activity) {
+            renderDailyActivityChart(dailyActivityChartCanvas, data.hourly_activity);
         }
 
         const domainChartCanvas = document.getElementById('domain-chart');
@@ -549,60 +548,45 @@ document.addEventListener('DOMContentLoaded', function() {
             </table></div>`;
     }
     
-    function renderDailyActivityChart(canvas, activityData) {
-        function formatMinutes(minutes) {
-            const h = Math.floor(minutes / 60);
-            const m = Math.floor(minutes % 60);
-            let result = '';
-            if (h > 0) result += `${h}h `;
-            if (m > 0 || h === 0) result += `${m}m`;
-            return result.trim();
-        }
-        
-        // Como ahora solo se consulta un usuario, la gráfica no es muy útil con una sola barra.
-        // Se muestra una barra horizontal simple.
+    // --- INICIO DE LA MODIFICACIÓN ---
+    function renderDailyActivityChart(canvas, hourlyData) {
+        const labels = Array.from({ length: 24 }, (_, i) => {
+            const hour = i % 12 === 0 ? 12 : i % 12;
+            const ampm = i < 12 ? 'AM' : 'PM';
+            return `${hour} ${ampm}`;
+        });
+
         new Chart(canvas, {
             type: 'bar',
             data: {
-                labels: activityData.map(d => d.username),
+                labels: labels,
                 datasets: [{
-                    label: 'Tiempo de Actividad (Minutos)',
-                    data: activityData.map(d => d.duration_minutes),
-                    backgroundColor: '#3B82F6',
-                    borderColor: '#2563EB',
-                    borderWidth: 1,
-                    barPercentage: 0.4 
+                    label: 'Peticiones por Hora',
+                    data: hourlyData,
+                    backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                    borderColor: 'rgba(37, 99, 235, 1)',
+                    borderWidth: 1
                 }]
             },
             options: {
-                indexAxis: 'y',
                 responsive: true,
                 scales: {
                     x: {
-                        beginAtZero: true,
-                        title: { display: true, text: 'Minutos de Actividad' }
+                        grid: { display: false },
+                        title: { display: true, text: 'Hora del Día' }
                     },
                     y: {
-                       display: false // Oculta el nombre del usuario en el eje Y ya que está en el título
+                        beginAtZero: true,
+                        title: { display: true, text: 'Número de Peticiones' }
                     }
                 },
                 plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = 'Tiempo estimado de actividad';
-                                if (context.parsed.x !== null) {
-                                    label += ': ' + formatMinutes(context.parsed.x);
-                                }
-                                return label;
-                            }
-                        }
-                    }
+                    legend: { display: false }
                 }
             }
         });
     }
+    // --- FIN DE LA MODIFICACIÓN ---
 
     function renderDomainChart(canvas, domains) {
         new Chart(canvas, {

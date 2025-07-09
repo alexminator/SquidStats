@@ -241,8 +241,8 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
         raise
 
 # --- INICIO DE LA MODIFICACIÓN ---
-def get_daily_activity(db: Session, date_str: str, username: str = None) -> Dict[str, Any]:
-    """Calcula el tiempo de actividad diario por usuario para MySQL."""
+def get_daily_activity(db: Session, date_str: str, username: str) -> Dict[str, Any]:
+    """Calcula el número de peticiones por hora para un usuario en un día específico."""
     try:
         selected_date = datetime.strptime(date_str, '%Y-%m-%d')
     except ValueError:
@@ -254,39 +254,40 @@ def get_daily_activity(db: Session, date_str: str, username: str = None) -> Dict
     
     inspector = inspect(db.get_bind())
     if not all(table in inspector.get_table_names() for table in [log_table, user_table]):
-        return {"results": []} # Devuelve lista vacía en vez de error para que el frontend lo maneje
+        return {"total_requests": 0, "hourly_activity": []}
 
-    params = {}
-    # Se requiere un usuario, por lo tanto no se necesita la cláusula "WHERE u.username != '-'"
-    where_sql = "u.username = :username"
-    params['username'] = username
+    params = {'username': username}
     
-    # Consulta corregida para MySQL usando UNIX_TIMESTAMP()
+    # Consulta para agrupar peticiones por hora del día para un usuario
     query = text(f"""
         SELECT
-            u.username,
-            (UNIX_TIMESTAMP(MAX(l.created_at)) - UNIX_TIMESTAMP(MIN(l.created_at))) as duration_seconds
+            HOUR(l.created_at) as hour_of_day,
+            COUNT(*) as request_count
         FROM {log_table} l
         JOIN {user_table} u ON l.user_id = u.id
-        WHERE {where_sql}
-        GROUP BY u.username
-        HAVING duration_seconds > 0
-        ORDER BY duration_seconds DESC
+        WHERE u.username = :username
+        GROUP BY hour_of_day
+        ORDER BY hour_of_day ASC
     """)
     
     try:
         results = db.execute(query, params).fetchall()
-        activity_data = [
-            {
-                "username": row.username,
-                "duration_minutes": round((row.duration_seconds or 0) / 60)
-            }
-            for row in results
-        ]
-        # Si se consulta un solo usuario, la gráfica es más útil si se agrupa por algo más.
-        # Por ahora, simplemente devolvemos la duración total de ese usuario.
-        # En una futura mejora, se podría graficar la actividad por hora.
-        return {"results": activity_data}
+        
+        # Prepara un array de 24 horas con 0 peticiones
+        hourly_counts = [0] * 24
+        total_requests = 0
+
+        for row in results:
+            hour = row.hour_of_day
+            count = row.request_count
+            if 0 <= hour < 24:
+                hourly_counts[hour] = count
+                total_requests += count
+        
+        return {
+            "total_requests": total_requests,
+            "hourly_activity": hourly_counts
+        }
     except SQLAlchemyError as e:
         print(f"Error en get_daily_activity: {e}")
         return {"error": "Ocurrió un error en la base de datos al calcular la actividad diaria."}
