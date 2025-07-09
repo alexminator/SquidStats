@@ -27,7 +27,7 @@ from utils.colors import color_map
 from utils.updateSquid import update_squid
 from utils.updateSquidStats import updateSquidStats
 # --- INICIO DE LA MODIFICACIÓN ---
-# Se importa la nueva función de auditoría para redes sociales.
+# Se importa la nueva función de auditoría.
 from services.auditoria_service import (
     get_all_usernames,
     get_user_activity_summary,
@@ -36,7 +36,8 @@ from services.auditoria_service import (
     find_by_keyword,
     find_by_ip,
     find_by_response_code,
-    find_social_media_activity  # <--- NUEVA IMPORTACIÓN
+    find_social_media_activity,
+    get_daily_activity # <--- NUEVA IMPORTACIÓN
 )
 # --- FIN DE LA MODIFICACIÓN ---
 from flask import jsonify
@@ -492,12 +493,7 @@ def api_run_audit():
     keyword = data.get('keyword')
     ip_address = data.get('ip_address')
     response_code = data.get('response_code')
-    
-    # --- INICIO DE LA MODIFICACIÓN ---
-    # Se obtiene el parámetro social_media_sites del formulario.
-    # Puede ser una lista de sitios seleccionados.
     social_media_sites = data.get('social_media_sites')
-    # --- FIN DE LA MODIFICACIÓN ---
 
     db = get_session()
     try:
@@ -506,6 +502,11 @@ def api_run_audit():
             result = get_user_activity_summary(db, username, start_date, end_date)
         elif audit_type == 'top_users_data':
             result = get_top_users_by_data(db, start_date, end_date)
+        # --- INICIO DE LA MODIFICACIÓN ---
+        elif audit_type == 'daily_activity':
+            if not start_date: return jsonify({"error": "Se requiere una fecha de inicio."}), 400
+            result = get_daily_activity(db, start_date, username)
+        # --- FIN DE LA MODIFICACIÓN ---
         elif audit_type == 'denied_access':
             result = find_denied_access(db, start_date, end_date, username)
         elif audit_type == 'keyword_search':

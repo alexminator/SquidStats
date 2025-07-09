@@ -76,7 +76,8 @@
                         <optgroup label="Actividad General">
                             <option value="user_summary" data-requires="user">Resumen por Usuario</option>
                             <option value="top_users_data">Top 10 Usuarios (Datos)</option>
-                        </optgroup>
+                            <option value="daily_activity" data-requires="user">Actividad Diaria (Gráfica)</option>
+                            </optgroup>
                         <optgroup label="Seguridad y Políticas">
                             <option value="keyword_search" data-requires="user_optional,keyword">Búsqueda por Palabra Clave</option>
                             <option value="social_media_activity" data-requires="user_optional,social_media">Actividad en Redes Sociales</option>
@@ -150,13 +151,13 @@
             </div>
 
             <div class="lg:col-span-1 bg-slate-50 border border-slate-200 rounded-lg p-4 h-fit">
-                 <h3 class="text-md font-semibold text-slate-800 mb-4 border-b pb-2">Rango de Fechas</h3>
+                 <h3 class="text-md font-semibold text-slate-800 mb-4 border-b pb-2">Fecha del Reporte</h3>
                  <div class="space-y-4">
-                    <div>
-                        <label for="start-date" class="block text-sm font-semibold text-gray-700 mb-1">Fecha de Inicio</label>
+                    <div id="start-date-container">
+                        <label for="start-date" class="block text-sm font-semibold text-gray-700 mb-1">Fecha</label>
                         <input type="date" id="start-date" name="start_date" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50">
                     </div>
-                    <div>
+                    <div id="end-date-container">
                         <label for="end-date" class="block text-sm font-semibold text-gray-700 mb-1">Fecha de Fin</label>
                         <input type="date" id="end-date" name="end_date" class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50">
                     </div>
@@ -205,6 +206,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const usernameSelect = document.getElementById('username-filter');
     const startDateInput = document.getElementById('start-date');
     const endDateInput = document.getElementById('end-date');
+    const startDateContainer = document.getElementById('start-date-container');
+    const endDateContainer = document.getElementById('end-date-container');
     
     const defaultResultsHTML = `<div class="bg-white p-6 rounded-lg shadow-lg min-h-[300px] flex items-center justify-center">
             <div class="text-center text-gray-500 py-10">
@@ -226,9 +229,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     const today = new Date();
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(today.getDate() - 7);
-    startDateInput.value = sevenDaysAgo.toISOString().split('T')[0];
+    startDateInput.value = today.toISOString().split('T')[0];
     endDateInput.value = today.toISOString().split('T')[0];
 
     fetch('/api/all-users')
@@ -258,18 +259,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
+        // --- INICIO DE LA MODIFICACIÓN ---
         const userSelectContainer = conditionalInputs.user;
         const defaultUserOption = userSelectContainer.querySelector('select option[value=""]');
         
-        if (auditType === 'user_summary') {
-            defaultUserOption.textContent = '--- Seleccione un usuario ---';
-            defaultUserOption.disabled = true;
-            usernameSelect.value = '';
+        // Lógica para mostrar/ocultar campos de fecha
+        if (auditType === 'daily_activity') {
+            endDateContainer.style.display = 'none';
+            startDateContainer.querySelector('label').textContent = 'Fecha'; // Cambia el label a singular
         } else {
-            defaultUserOption.textContent = '--- Todos ---';
+            endDateContainer.style.display = 'block';
+            startDateContainer.querySelector('label').textContent = 'Fecha de Inicio'; // Lo restaura
+        }
+
+        // Lógica para el selector de usuario
+        if (auditType === 'user_summary' || auditType === 'daily_activity') {
+            defaultUserOption.textContent = '-- Seleccione un Usuario --';
+            defaultUserOption.disabled = true;
+            usernameSelect.value = ''; // Fuerza a que no haya nada seleccionado
+        } else {
+            defaultUserOption.textContent = '-- Todos --';
             const isOptional = required.includes('user_optional');
             defaultUserOption.disabled = !isOptional;
         }
+        // --- FIN DE LA MODIFICACIÓN ---
     }
 
     auditTypeSelect.addEventListener('change', toggleConditionalInputs);
@@ -341,7 +354,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 html = renderUserSummary(data);
             } else if (auditType === 'top_users_data') {
                 html = renderTopUsers(data);
-            } else if (['keyword_search', 'ip_activity', 'response_code_search', 'social_media_activity'].includes(auditType)) {
+            } 
+            else if (auditType === 'daily_activity') {
+                const user = formData.username; // Ya no puede ser "Todos"
+                const date = formData.start_date;
+                let title = `Tiempo de Actividad para '${user}' el ${date}`;
+                if (data.results && data.results.length > 0) {
+                     html = `<div class="bg-white p-6 rounded-lg shadow-lg">
+                                <h2 class="text-2xl font-bold mb-4">${title}</h2>
+                                <canvas id="daily-activity-chart"></canvas>
+                             </div>`;
+                } else {
+                     html = `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros de actividad para la fecha y usuario seleccionado.</p></div>`;
+                }
+            } 
+            else if (['keyword_search', 'ip_activity', 'response_code_search', 'social_media_activity'].includes(auditType)) {
                 let title = '';
                 if (auditType === 'keyword_search') {
                     const user = formData.username || 'Todos';
@@ -363,6 +390,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         resultsContainer.innerHTML = html;
+
+        const dailyActivityChartCanvas = document.getElementById('daily-activity-chart');
+        if (dailyActivityChartCanvas && data.results) {
+            renderDailyActivityChart(dailyActivityChartCanvas, data.results);
+        }
 
         const domainChartCanvas = document.getElementById('domain-chart');
         if (domainChartCanvas && data.top_domains) {
@@ -391,34 +423,22 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             const parts = datetimeString.split(' ');
-            
-            if (parts.length < 5) {
-                return '--'; 
-            }
+            if (parts.length < 5) return '--'; 
             const timePart = parts[4]; 
-
             const [hoursStr, minutesStr, secondsStr] = timePart.split(':');
-            
             let hour = parseInt(hoursStr, 10);
-            if (isNaN(hour)) {
-                return '--';
-            }
-
+            if (isNaN(hour)) return '--';
             const ampm = hour >= 12 ? 'PM' : 'AM';
             hour = hour % 12;
             hour = hour || 12;
-
             const formattedHour = String(hour).padStart(2, '0');
-            
             return `${formattedHour}:${minutesStr}:${secondsStr} ${ampm}`;
-
         } catch (error) {
             console.error("Error crítico al formatear la hora:", error, "Input was:", datetimeString);
             return '--';
         }
     }
 
-    // --- INICIO DE LA MODIFICACIÓN: Columnas de la tabla de resultados reordenadas ---
     function renderNestedAccordionResults(title, results) {
         if (!results || results.length === 0) {
             return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros.</p></div>`;
@@ -426,14 +446,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const usersData = {};
         results.forEach(item => {
-            if (!usersData[item.username]) {
-                usersData[item.username] = {};
-            }
+            if (!usersData[item.username]) usersData[item.username] = {};
             const dateStr = `${item.log_date.substring(0, 4)}-${item.log_date.substring(4, 6)}-${item.log_date.substring(6, 8)}`;
             if (!usersData[item.username][dateStr]) {
                 usersData[item.username][dateStr] = { daily_requests: 0, daily_data: 0, activities: [] };
             }
-            
             const dateGroup = usersData[item.username][dateStr];
             dateGroup.activities.push(item);
             dateGroup.daily_requests += Number(item.access_count) || 0;
@@ -491,7 +508,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return html;
     }
-    // --- FIN DE LA MODIFICACIÓN ---
     
     function renderUserSummary(data) {
         const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join('');
@@ -531,6 +547,61 @@ document.addEventListener('DOMContentLoaded', function() {
                 <thead class="bg-gray-100"><tr><th class="p-3">#</th><th class="p-3">Usuario</th><th class="p-3">Datos Consumidos</th></tr></thead>
                 <tbody class="divide-y">${rows}</tbody>
             </table></div>`;
+    }
+    
+    function renderDailyActivityChart(canvas, activityData) {
+        function formatMinutes(minutes) {
+            const h = Math.floor(minutes / 60);
+            const m = Math.floor(minutes % 60);
+            let result = '';
+            if (h > 0) result += `${h}h `;
+            if (m > 0 || h === 0) result += `${m}m`;
+            return result.trim();
+        }
+        
+        // Como ahora solo se consulta un usuario, la gráfica no es muy útil con una sola barra.
+        // Se muestra una barra horizontal simple.
+        new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: activityData.map(d => d.username),
+                datasets: [{
+                    label: 'Tiempo de Actividad (Minutos)',
+                    data: activityData.map(d => d.duration_minutes),
+                    backgroundColor: '#3B82F6',
+                    borderColor: '#2563EB',
+                    borderWidth: 1,
+                    barPercentage: 0.4 
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Minutos de Actividad' }
+                    },
+                    y: {
+                       display: false // Oculta el nombre del usuario en el eje Y ya que está en el título
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = 'Tiempo estimado de actividad';
+                                if (context.parsed.x !== null) {
+                                    label += ': ' + formatMinutes(context.parsed.x);
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     function renderDomainChart(canvas, domains) {

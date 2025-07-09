@@ -65,19 +65,16 @@ def _execute_union_query(db: Session, tables: List[Tuple[str, str]], where_claus
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
-        # --- INICIO DE LA CORRECCIÓN: Se usa la columna 'created_at' en lugar de 'timestamp' ---
         select_clauses.append(
             f"SELECT u.username, u.ip, l.url, l.response, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
-        # --- FIN DE LA CORRECCIÓN ---
     
     full_query_str = f"""
         SELECT username, ip, url, response, data_transmitted, created_at, log_date
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
         ORDER BY {order_by}
-        LIMIT 500
     """
     try:
         return db.execute(text(full_query_str), params).fetchall()
@@ -94,12 +91,10 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
-        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
             f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
-        # --- FIN DE LA CORRECCIÓN ---
 
     where_clause = "url LIKE :keyword"
     params = {'keyword': f'%{keyword}%'}
@@ -113,7 +108,6 @@ def find_by_keyword(db: Session, start_str: str, end_str: str, keyword: str, use
         WHERE {where_clause}
         GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
-        LIMIT 500
     """
     try:
         results = db.execute(text(full_query_str), params).fetchall()
@@ -164,23 +158,18 @@ def find_social_media_activity(db: Session, start_str: str, end_str: str, sites:
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
-        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
             f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
-        # --- FIN DE LA CORRECCIÓN ---
     
-    # --- INICIO DE LA CORRECCIÓN: Se usa MAX(created_at) en la consulta principal ---
     full_query_str = f"""
         SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data, MAX(created_at) as last_seen
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
         GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
-        LIMIT 500 
     """
-    # --- FIN DE LA CORRECCIÓN ---
     try:
         results = db.execute(text(full_query_str), params).fetchall()
         return {"results": [dict(row._mapping) for row in results]}
@@ -197,24 +186,19 @@ def find_by_ip(db: Session, start_str: str, end_str: str, ip_address: str) -> Di
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
-        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
             f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id WHERE u.ip = :ip_address"
         )
-        # --- FIN DE LA CORRECCIÓN ---
     
     params = {'ip_address': ip_address}
     
-    # --- INICIO DE LA CORRECCIÓN: Se usa MAX(created_at) en la consulta principal ---
     full_query_str = f"""
         SELECT log_date, username, ip, url, COUNT(*) as access_count, SUM(data_transmitted) as total_data, MAX(created_at) as last_seen
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         GROUP BY log_date, username, ip, url
         ORDER BY username, log_date DESC, access_count DESC
-        LIMIT 500
     """
-    # --- FIN DE LA CORRECCIÓN ---
     try:
         results = db.execute(text(full_query_str), params).fetchall()
         return {"results": [dict(row._mapping) for row in results]}
@@ -231,12 +215,10 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
     select_clauses = []
     for log_table, user_table in tables:
         date_str = log_table.split('_')[1]
-        # --- INICIO DE LA CORRECCIÓN: Se usa 'l.created_at' en la subconsulta ---
         select_clauses.append(
             f"SELECT u.username, u.ip, l.url, l.data_transmitted, l.response, l.created_at, '{date_str}' as log_date "
             f"FROM {log_table} l JOIN {user_table} u ON l.user_id = u.id"
         )
-        # --- FIN DE LA CORRECCIÓN ---
     
     where_clause = "response = :code"
     params = {'code': code}
@@ -244,22 +226,71 @@ def find_by_response_code(db: Session, start_str: str, end_str: str, code: int, 
         where_clause += " AND username = :username"
         params['username'] = username
     
-    # --- INICIO DE LA CORRECCIÓN: Se usa MAX(created_at) y se mantiene el GROUP BY por 'response' ---
     full_query_str = f"""
         SELECT log_date, username, ip, url, response, COUNT(*) as access_count, SUM(data_transmitted) as total_data, MAX(created_at) as last_seen
         FROM ({ " UNION ALL ".join(select_clauses) }) as all_logs
         WHERE {where_clause}
         GROUP BY log_date, username, ip, url, response
         ORDER BY username, log_date DESC, access_count DESC
-        LIMIT 500
     """
-    # --- FIN DE LA CORRECCIÓN ---
     try:
         results = db.execute(text(full_query_str), params).fetchall()
         return {"results": [dict(row._mapping) for row in results]}
     except SQLAlchemyError as e:
         print(f"Error en find_by_response_code: {e}")
         raise
+
+# --- INICIO DE LA MODIFICACIÓN ---
+def get_daily_activity(db: Session, date_str: str, username: str = None) -> Dict[str, Any]:
+    """Calcula el tiempo de actividad diario por usuario para MySQL."""
+    try:
+        selected_date = datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        return {"error": "Formato de fecha inválido. Use YYYY-MM-DD."}
+
+    date_suffix = selected_date.strftime("%Y%m%d")
+    log_table = f'log_{date_suffix}'
+    user_table = f'user_{date_suffix}'
+    
+    inspector = inspect(db.get_bind())
+    if not all(table in inspector.get_table_names() for table in [log_table, user_table]):
+        return {"results": []} # Devuelve lista vacía en vez de error para que el frontend lo maneje
+
+    params = {}
+    # Se requiere un usuario, por lo tanto no se necesita la cláusula "WHERE u.username != '-'"
+    where_sql = "u.username = :username"
+    params['username'] = username
+    
+    # Consulta corregida para MySQL usando UNIX_TIMESTAMP()
+    query = text(f"""
+        SELECT
+            u.username,
+            (UNIX_TIMESTAMP(MAX(l.created_at)) - UNIX_TIMESTAMP(MIN(l.created_at))) as duration_seconds
+        FROM {log_table} l
+        JOIN {user_table} u ON l.user_id = u.id
+        WHERE {where_sql}
+        GROUP BY u.username
+        HAVING duration_seconds > 0
+        ORDER BY duration_seconds DESC
+    """)
+    
+    try:
+        results = db.execute(query, params).fetchall()
+        activity_data = [
+            {
+                "username": row.username,
+                "duration_minutes": round((row.duration_seconds or 0) / 60)
+            }
+            for row in results
+        ]
+        # Si se consulta un solo usuario, la gráfica es más útil si se agrupa por algo más.
+        # Por ahora, simplemente devolvemos la duración total de ese usuario.
+        # En una futura mejora, se podría graficar la actividad por hora.
+        return {"results": activity_data}
+    except SQLAlchemyError as e:
+        print(f"Error en get_daily_activity: {e}")
+        return {"error": "Ocurrió un error en la base de datos al calcular la actividad diaria."}
+# --- FIN DE LA MODIFICACIÓN ---
 
 def get_all_usernames(db: Session) -> List[str]:
     engine = db.get_bind()
