@@ -1,4 +1,5 @@
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
 <style>
     .social-chip { padding: 8px 16px; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; border: 1px solid #e5e7eb; background-color: #f9fafb; color: #374151; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
@@ -7,6 +8,9 @@
     .social-chip.selected:hover { background-color: #1d4ed8; }
     .tooltip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px; background-color: #111827; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; white-space: nowrap; opacity: 0; transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out; pointer-events: none; transform-origin: bottom center; transform: translateX(-50%) scale(0.95); }
     .group:hover .tooltip { opacity: 1; transform: translateX(-50%) scale(1); }
+    .chart-container-wrapper { position: relative; }
+    .chart-spinner { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255, 255, 255, 0.7); z-index: 10; display: flex; align-items: center; justify-content: center; visibility: hidden; opacity: 0; transition: opacity 0.3s, visibility 0.3s; }
+    .chart-spinner.visible { visibility: visible; opacity: 1; }
 </style>
 
 
@@ -36,7 +40,7 @@
                             <option value="social_media_activity" data-requires="user_optional,social_media">Actividad en Redes Sociales</option>
                         </optgroup>
                         <optgroup label="Auditoría Técnica">
-                            <option value="duration_by_site" data-requires="user">Duración por Sitio Web</option>
+                            <option value="duration_by_site" data-requires="user">Análisis por Sitios Webs</option>
                             <option value="ip_activity" data-requires="ip">Actividad por Dirección IP</option>
                             <option value="response_code_search" data-requires="user_optional,response_code">Análisis por Código de Respuesta</option>
                         </optgroup>
@@ -112,6 +116,11 @@
 
 
 <script>
+    window.myTimelineChart = null;
+    window.myDailyActivityChart = null;
+    window.myDomainChart = null;
+    window.myResponseChart = null;
+
     function toggleDetails(header) {
         const details = header.nextElementSibling, icon = header.querySelector('.toggle-icon');
         if (details.style.display === 'block') { details.style.display = 'none'; icon.classList.remove('rotate-180'); } 
@@ -148,6 +157,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     form.addEventListener('submit', function(event) {
         event.preventDefault();
+
+        if (window.myTimelineChart) { window.myTimelineChart.destroy(); window.myTimelineChart = null; }
+        if (window.myDailyActivityChart) { window.myDailyActivityChart.destroy(); window.myDailyActivityChart = null; }
+        if (window.myDomainChart) { window.myDomainChart.destroy(); window.myDomainChart = null; }
+        if (window.myResponseChart) { window.myResponseChart.destroy(); window.myResponseChart = null; }
+
         const formData = new FormData(form), data = Object.fromEntries(formData.entries());
         data.social_media_sites = Array.from(document.getElementById('social-media-chips').querySelectorAll('.social-chip.selected')).map(chip => chip.dataset.value);
         const required = auditTypeSelect.options[auditTypeSelect.selectedIndex].dataset.requires?.split(',') || [];
@@ -162,7 +177,6 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(err => { resultsContainer.innerHTML = `<div class="bg-white p-6 rounded-lg shadow-lg"><div class="text-center text-red-500 py-10"><strong>Error:</strong> ${err}</div></div>`; });
     });
 
-    // --- INICIO DE LA MODIFICACIÓN ---
     function formatDuration(totalSeconds) {
         if (!totalSeconds || totalSeconds < 0) return '0s';
         if (totalSeconds < 60) return `${Math.floor(totalSeconds)}s`;
@@ -172,10 +186,9 @@ document.addEventListener('DOMContentLoaded', function() {
         let result = '';
         if (h > 0) result += `${h}h `;
         if (m > 0) result += `${m}m `;
-        if (s > 0 && h === 0) result += `${s}s`; // Muestra segundos solo si no hay horas
-        return result.trim();
+        if (s > 0 && h === 0) result += `${s}s`;
+        return result.trim() || '0s';
     }
-    // --- FIN DE LA MODIFICACIÓN ---
 
     function renderResults(auditType, data, formData) {
         let html = '';
@@ -188,23 +201,58 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.total_requests > 0) html = `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-2">${title}</h2><p class="text-gray-600 mb-4">Total de Peticiones en el día: <span class="font-bold text-blue-600">${data.total_requests.toLocaleString()}</span></p><canvas id="daily-activity-chart"></canvas></div>`;
                 else html = `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron peticiones.</p></div>`;
             } 
-            // --- INICIO DE LA MODIFICACIÓN ---
             else if (auditType === 'duration_by_site') {
                 const user = formData.username;
-                let title = `Duración Máxima de Conexión por Sitio para '${user}'`;
+                let title = `Análisis por Sitios Webs para '${user}'`;
                 if (data.results && data.results.length > 0) {
                     let tableRows = data.results.map(item => `
                         <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-3 truncate" title="${item.url}"><a href="http://${item.url}" target="_blank" class="text-blue-600 hover:underline">${item.url}</a></td>
+                            <td class="py-2 px-3 text-center">
+                                <input type="checkbox" class="site-checkbox h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                       data-url="${item.url}">
+                            </td>
+                            <td class="py-2 px-3 truncate" title="${item.url}">
+                                <a href="http://${item.url}" target="_blank" class="text-blue-600 hover:underline">${item.url}</a>
+                            </td>
+                            <td class="py-2 px-3 font-mono text-center">${item.first_request_time ? new Date(item.first_request_time).toLocaleTimeString() : 'N/A'}</td>
                             <td class="py-2 px-3 font-mono text-center">${formatDuration(item.max_duration_seconds)}</td>
                             <td class="py-2 px-3 text-center">${formatBytes(item.total_data)}</td>
                         </tr>`).join('');
-                    html = `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-gray-100"><tr><th class="p-3">Sitio Web (URI)</th><th class="p-3 text-center">Duración Máx. Registrada</th><th class="p-3 text-center">Datos Transferidos</th></tr></thead><tbody class="divide-y">${tableRows}</tbody></table></div></div>`;
+                    html = `
+                        <div class="bg-white p-6 rounded-lg shadow-lg">
+                            <h2 class="text-2xl font-bold mb-4">${title}</h2>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead class="bg-gray-100">
+                                        <tr>
+                                            <th class="p-3 text-center w-12"><i class="fas fa-check-square"></i></th>
+                                            <th class="p-3">Sitio Web (URI)</th>
+                                            <th class="p-3 text-center">Hora 1ª Petición</th>
+                                            <th class="p-3 text-center">Duración Máx.</th>
+                                            <th class="p-3 text-center">Datos Transferidos</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y">${tableRows}</tbody>
+                                </table>
+                            </div>
+                            <div class="mt-6 border-t pt-6">
+                                <h3 class="text-xl font-semibold mb-3">Gráfico de Peticiones Individuales</h3>
+                                <p class="text-sm text-gray-600 mb-4">Seleccione los sitios en la tabla para visualizar cada petición como una barra en la línea de tiempo.</p>
+                                <button id="generate-timeline-chart" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors">
+                                    <i class="fas fa-chart-gantt mr-2"></i>Graficar Selección
+                                </button>
+                                <div class="mt-4 bg-gray-50 p-2 rounded-lg shadow-inner min-h-[450px] chart-container-wrapper">
+                                    <canvas id="timeline-chart"></canvas>
+                                    <div id="chart-spinner" class="chart-spinner">
+                                        <i class="fas fa-spinner fa-spin text-4xl text-blue-500"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
                 } else {
                     html = `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">${title}</h2><p class="text-gray-500">No se encontraron registros de duración para el usuario y rango de fechas seleccionado.</p></div>`;
                 }
             }
-            // --- FIN DE LA MODIFICACIÓN ---
             else if (['keyword_search', 'ip_activity', 'response_code_search', 'social_media_activity'].includes(auditType)) {
                 let title = '';
                 if (auditType === 'keyword_search') title = `Resultados para la palabra clave "${formData.keyword}" para: ${formData.username || 'Todos'}`;
@@ -215,10 +263,52 @@ document.addEventListener('DOMContentLoaded', function() {
             } else { html = '<div class="bg-white p-6 rounded-lg shadow-lg"><p>Tipo de reporte no reconocido.</p></div>'; }
         }
         resultsContainer.innerHTML = html;
+
+        const generateChartBtn = document.getElementById('generate-timeline-chart');
+        if (generateChartBtn) {
+            generateChartBtn.addEventListener('click', () => {
+                const selectedSites = Array.from(document.querySelectorAll('.site-checkbox:checked')).map(cb => cb.dataset.url);
+                if (selectedSites.length === 0) {
+                    alert('Por favor, seleccione al menos un sitio web de la tabla para graficar.');
+                    return;
+                }
+                const spinner = document.getElementById('chart-spinner');
+                spinner.classList.add('visible');
+                
+                const payload = {
+                    start_date: document.getElementById('start-date').value,
+                    end_date: document.getElementById('end-date').value,
+                    username: document.getElementById('username-filter').value,
+                    sites: selectedSites
+                };
+
+                fetch('/api/audit/connection-events', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                })
+                .then(r => r.json())
+                .then(data => {
+                    spinner.classList.remove('visible');
+                    if (data.error) {
+                        alert(`Error al obtener datos del gráfico: ${data.error}`);
+                        return;
+                    }
+                    renderTimelineChart(data.events);
+                })
+                .catch(err => {
+                    spinner.classList.remove('visible');
+                    alert(`Error de red al contactar la API: ${err}`);
+                });
+            });
+        }
+
         const dailyActivityChartCanvas = document.getElementById('daily-activity-chart');
         if (dailyActivityChartCanvas && data.hourly_activity) renderDailyActivityChart(dailyActivityChartCanvas, data.hourly_activity);
+
         const domainChartCanvas = document.getElementById('domain-chart');
         if (domainChartCanvas && data.top_domains) renderDomainChart(domainChartCanvas, data.top_domains);
+
         const responseChartCanvas = document.getElementById('response-chart');
         if (responseChartCanvas && data.response_summary) renderResponseChart(responseChartCanvas, data.response_summary);
     }
@@ -238,10 +328,143 @@ document.addEventListener('DOMContentLoaded', function() {
         return html;
     }
     
-    function renderUserSummary(data) { const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join(''); const responseSummaryHtml = data.response_summary.slice(0, 5).map(r => `<li>${r.code}: <span class="font-bold">${r.count.toLocaleString()}</span></li>`).join(''); return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">Resumen de Actividad</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"><div class="bg-blue-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_requests.toLocaleString()}</div><div class="text-sm">Peticiones Totales</div></div><div class="bg-green-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_data_gb}</div><div class="text-sm">GB Consumidos</div></div><div class="bg-gray-100 p-4 rounded-lg"><h4 class="font-semibold text-sm mb-1 text-center">Resumen de Respuestas</h4><ul class="text-xs space-y-1">${responseSummaryHtml}</ul></div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h3 class="text-xl font-semibold mb-2">Top 5 Dominios Visitados</h3><canvas id="domain-chart"></canvas></div><div><h3 class="text-xl font-semibold mb-2">Distribución de Respuestas HTTP</h3><canvas id="response-chart"></canvas></div></div></div>`; }
-    function renderTopUsers(data) { const rows = data.top_users.map((user, index) => `<tr class="hover:bg-gray-50"><td class="p-3">${index + 1}</td><td class="p-3 font-medium">${user.username}</td><td class="p-3 font-mono">${user.total_data_gb.toFixed(2)} GB</td></tr>`).join(''); return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">Top 10 Usuarios por Consumo de Datos</h2><table class="w-full text-left"><thead class="bg-gray-100"><tr><th class="p-3">#</th><th class="p-3">Usuario</th><th class="p-3">Datos Consumidos</th></tr></thead><tbody class="divide-y">${rows}</tbody></table></div>`; }
-    function renderDailyActivityChart(canvas, hourlyData) { const labels = Array.from({ length: 24 }, (_, i) => { const hour = i % 12 === 0 ? 12 : i % 12, ampm = i < 12 ? 'AM' : 'PM'; return `${hour} ${ampm}`; }); new Chart(canvas, { type: 'bar', data: { labels: labels, datasets: [{ label: 'Peticiones por Hora', data: hourlyData, backgroundColor: 'rgba(59, 130, 246, 0.5)', borderColor: 'rgba(37, 99, 235, 1)', borderWidth: 1 }] }, options: { responsive: true, scales: { x: { grid: { display: false }, title: { display: true, text: 'Hora del Día' } }, y: { beginAtZero: true, title: { display: true, text: 'Número de Peticiones' } } }, plugins: { legend: { display: false } } } }); }
-    function renderDomainChart(canvas, domains) { new Chart(canvas, { type: 'pie', data: { labels: domains.map(d => d.domain), datasets: [{ label: 'Peticiones', data: domains.map(d => d.count), backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'] }] }, options: { responsive: true, plugins: { legend: { position: 'right' } } } }); }
-    function renderResponseChart(canvas, responses) { const c = (code) => { if (code >= 500) return '#DC2626'; if (code >= 400) return '#F59E0B'; if (code >= 300) return '#3B82F6'; if (code >= 200) return '#10B981'; return '#6B7280'; }; new Chart(canvas, { type: 'pie', data: { labels: responses.map(r => `Código ${r.code}`), datasets: [{ label: 'Cantidad', data: responses.map(r => r.count), backgroundColor: responses.map(r => c(r.code)) }] }, options: { responsive: true, plugins: { legend: { position: 'right' } } } }); }
+    // --- INICIO DE LA MODIFICACIÓN: Restaurar la lógica correcta para los gráficos simples ---
+    function renderUserSummary(data) {
+        const topDomainsHtml = data.top_domains.map(d => `<li>${d.domain} <span class="font-bold">(${d.count} reqs)</span></li>`).join('');
+        const responseSummaryHtml = data.response_summary.slice(0, 5).map(r => `<li>${r.code}: <span class="font-bold">${r.count.toLocaleString()}</span></li>`).join('');
+        return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">Resumen de Actividad</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"><div class="bg-blue-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_requests.toLocaleString()}</div><div class="text-sm">Peticiones Totales</div></div><div class="bg-green-100 p-4 rounded-lg text-center"><div class="text-3xl font-bold">${data.total_data_gb}</div><div class="text-sm">GB Consumidos</div></div><div class="bg-gray-100 p-4 rounded-lg"><h4 class="font-semibold text-sm mb-1 text-center">Resumen de Respuestas</h4><ul class="text-xs space-y-1">${responseSummaryHtml}</ul></div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h3 class="text-xl font-semibold mb-2">Top 5 Dominios Visitados</h3><canvas id="domain-chart"></canvas></div><div><h3 class="text-xl font-semibold mb-2">Distribución de Respuestas HTTP</h3><canvas id="response-chart"></canvas></div></div></div>`;
+    }
+    
+    function renderTopUsers(data) {
+        const rows = data.top_users.map((user, index) => `<tr class="hover:bg-gray-50"><td class="p-3">${index + 1}</td><td class="p-3 font-medium">${user.username}</td><td class="p-3 font-mono">${user.total_data_gb.toFixed(2)} GB</td></tr>`).join('');
+        return `<div class="bg-white p-6 rounded-lg shadow-lg"><h2 class="text-2xl font-bold mb-4">Top 10 Usuarios por Consumo de Datos</h2><table class="w-full text-left"><thead class="bg-gray-100"><tr><th class="p-3">#</th><th class="p-3">Usuario</th><th class="p-3">Datos Consumidos</th></tr></thead><tbody class="divide-y">${rows}</tbody></table></div>`;
+    }
+
+    function renderDailyActivityChart(canvas, hourlyData) {
+        window.myDailyActivityChart = new Chart(canvas, { type: 'bar', data: { labels: Array.from({ length: 24 }, (_, i) => { const hour = i % 12 === 0 ? 12 : i % 12, ampm = i < 12 ? 'AM' : 'PM'; return `${hour} ${ampm}`; }), datasets: [{ label: 'Peticiones por Hora', data: hourlyData, backgroundColor: 'rgba(59, 130, 246, 0.5)', borderColor: 'rgba(37, 99, 235, 1)', borderWidth: 1 }] }, options: { responsive: true, scales: { x: { grid: { display: false }, title: { display: true, text: 'Hora del Día' } }, y: { beginAtZero: true, title: { display: true, text: 'Número de Peticiones' } } }, plugins: { legend: { display: false } } } });
+    }
+
+    function renderDomainChart(canvas, domains) {
+        window.myDomainChart = new Chart(canvas, { type: 'pie', data: { labels: domains.map(d => d.domain), datasets: [{ label: 'Peticiones', data: domains.map(d => d.count), backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'] }] }, options: { responsive: true, plugins: { legend: { position: 'right' } } } });
+    }
+
+    function renderResponseChart(canvas, responses) {
+        const c = (code) => { if (code >= 500) return '#DC2626'; if (code >= 400) return '#F59E0B'; if (code >= 300) return '#3B82F6'; if (code >= 200) return '#10B981'; return '#6B7280'; };
+        window.myResponseChart = new Chart(canvas, { type: 'pie', data: { labels: responses.map(r => `Código ${r.code}`), datasets: [{ label: 'Cantidad', data: responses.map(r => r.count), backgroundColor: responses.map(r => c(r.code)) }] }, options: { responsive: true, plugins: { legend: { position: 'right' } } } });
+    }
+    // --- FIN DE LA MODIFICACIÓN ---
+
+    function normalizeUrl(url) {
+        if (!url) return 'Desconocido';
+        try {
+            const match = url.match(/^(?:https?:\/\/)?(?:www\.)?([^\/:]+)/);
+            return match ? match[1].toLowerCase() : url.toLowerCase();
+        } catch (e) {
+            return url.split(':')[0].toLowerCase().trim();
+        }
+    }
+
+    function renderTimelineChart(events) {
+        const ctx = document.getElementById('timeline-chart');
+        if (!ctx) return;
+        
+        if (!events || events.length === 0) {
+            alert("No se encontraron eventos de conexión para los sitios seleccionados.");
+            return;
+        }
+
+        const sites = {};
+        const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1', '#D946EF', '#F97316', '#06B6D4', '#14B8A6'];
+        let colorIndex = 0;
+
+        events.forEach(event => {
+            const key = normalizeUrl(event.url);
+            if (!sites[key]) {
+                sites[key] = {
+                    label: key,
+                    data: [],
+                    backgroundColor: CHART_COLORS[colorIndex % CHART_COLORS.length] + 'B3',
+                    borderColor: CHART_COLORS[colorIndex % CHART_COLORS.length],
+                    borderWidth: 1,
+                    // --- INICIO DE LA SOLUCIÓN: Usar barThickness para un grosor fijo ---
+                    barThickness: 8,
+                    // --- FIN DE LA SOLUCIÓN ---
+                };
+                colorIndex++;
+            }
+            
+            const snapshotTime = new Date(event.snapshot_time).getTime();
+            const dataInKB = (event.data_transmitted || 0) / 1024;
+            
+            // --- INICIO DE LA SOLUCIÓN: El dato para una barra vertical es un único punto en el tiempo ---
+            sites[key].data.push({
+                x: snapshotTime, 
+                y: dataInKB,
+                raw: event
+            });
+            // --- FIN DE LA SOLUCIÓN ---
+        });
+        
+        const datasets = Object.values(sites);
+        
+        const allTimestamps = datasets.flatMap(d => d.data.map(p => p.x));
+        let axisMin, axisMax;
+
+        if (allTimestamps.length > 0) {
+            const minTime = Math.min(...allTimestamps);
+            const maxTime = Math.max(...allTimestamps);
+            const timeRange = maxTime - minTime;
+            const padding = timeRange > 0 ? timeRange * 0.05 : 10 * 60 * 1000;
+            axisMin = minTime - padding;
+            axisMax = maxTime + padding;
+        }
+
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    min: axisMin,
+                    max: axisMax,
+                    title: { display: true, text: 'Línea de Tiempo de Conexiones' }
+                },
+                y: {
+                    type: 'linear',
+                    beginAtZero: true,
+                    title: { display: true, text: 'Datos Transferidos (KB)' },
+                    ticks: { callback: value => value.toFixed(1) + ' KB' }
+                }
+            },
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        // --- INICIO DE LA SOLUCIÓN: Ajustar el tooltip a la nueva estructura de datos ---
+                        label: function(context) {
+                            const rawData = context.raw.raw;
+                            return [
+                                `URL: ${rawData.url}`,
+                                `Hora: ${new Date(context.parsed.x).toLocaleTimeString()}`, // Usar el único punto de tiempo
+                                `Duración: ${formatDuration(rawData.duration_seconds)}`,
+                                `Consumo: ${formatBytes(rawData.data_transmitted)}`
+                            ];
+                        }
+                        // --- FIN DE LA SOLUCIÓN ---
+                    }
+                }
+            }
+        };
+
+        if (window.myTimelineChart) {
+            window.myTimelineChart.destroy();
+        }
+
+        window.myTimelineChart = new Chart(ctx, {
+            type: 'bar',
+            data: { datasets: datasets },
+            options: chartOptions
+        });
+    }
 });
 </script>

@@ -38,7 +38,8 @@ from services.auditoria_service import (
     find_by_response_code,
     find_social_media_activity,
     get_daily_activity,
-    get_duration_by_site # <--- NUEVA IMPORTACIÓN
+    get_duration_by_site,
+    get_connection_events_for_sites # <--- NUEVA IMPORTACIÓN
 )
 # --- FIN DE LA MODIFICACIÓN ---
 
@@ -505,6 +506,32 @@ def api_run_audit():
         return jsonify({"error": "Ocurrió un error interno en el servidor."}), 500
     finally:
         db.close()
+
+# --- INICIO DE LA MODIFICACIÓN: Nueva ruta para obtener datos para el gráfico ---
+@app.route('/api/audit/connection-events', methods=['POST'])
+def api_get_connection_events():
+    """
+    Endpoint para obtener los eventos de conexión brutos para los sitios seleccionados.
+    """
+    data = request.get_json()
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    username = data.get('username')
+    sites = data.get('sites')
+
+    if not all([start_date, end_date, username, sites]):
+        return jsonify({"error": "Faltan parámetros (start_date, end_date, username, sites)."}), 400
+
+    db = get_session()
+    try:
+        result = get_connection_events_for_sites(db, start_date, end_date, username, sites)
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error en la API de eventos de conexión: {e}")
+        return jsonify({"error": "Ocurrió un error interno en el servidor."}), 500
+    finally:
+        db.close()
+# --- FIN DE LA MODIFICACIÓN ---
 
 # ------------------- REPORTES POR RANGO -------------------
 @app.route('/reports-range', methods=['POST'])

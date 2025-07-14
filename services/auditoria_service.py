@@ -12,7 +12,7 @@ current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
 sys.path.append(str(project_root))
 
-from database.database import get_engine, ActiveConnectionSnapshot
+from database.database import get_session, get_engine, ActiveConnectionSnapshot
 
 SOCIAL_MEDIA_DOMAINS = {
     'YouTube': [ 'youtube.com', 'ytimg.com', 'googlevideo.com', 'yt3.ggpht.com', 'youtubei.googleapis.com', 'youtube-ui.l.google.com', 'youtube.googleapis.com' ],
@@ -112,9 +112,11 @@ def get_daily_activity(db: Session, date_str: str, username: str) -> Dict[str, A
         return {"total_requests": total_requests, "hourly_activity": hourly_counts}
     except SQLAlchemyError as e: print(f"Error en get_daily_activity: {e}"); return {"error": "Error en la BD al calcular la actividad."}
 
-# --- INICIO DE LA MODIFICACIÓN ---
 def get_duration_by_site(db: Session, start_str: str, end_str: str, username: str) -> Dict[str, Any]:
-    """Consulta la duración máxima de conexión por sitio para un usuario en un rango de fechas."""
+    """
+    Consulta la duración máxima de conexión y la primera hora de petición por sitio.
+    Esta función sigue siendo utilizada para poblar la tabla.
+    """
     try:
         start_date = datetime.strptime(start_str, '%Y-%m-%d').replace(hour=0, minute=0, second=0)
         end_date = datetime.strptime(end_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
@@ -125,7 +127,8 @@ def get_duration_by_site(db: Session, start_str: str, end_str: str, username: st
         results = db.query(
             ActiveConnectionSnapshot.uri,
             func.max(ActiveConnectionSnapshot.elapsed_seconds).label('max_duration_seconds'),
-            func.sum(ActiveConnectionSnapshot.data_transmitted).label('total_data')
+            func.sum(ActiveConnectionSnapshot.data_transmitted).label('total_data'),
+            func.min(ActiveConnectionSnapshot.snapshot_time).label('first_request_time')
         ).filter(
             ActiveConnectionSnapshot.username == username,
             ActiveConnectionSnapshot.snapshot_time.between(start_date, end_date)
@@ -139,13 +142,55 @@ def get_duration_by_site(db: Session, start_str: str, end_str: str, username: st
             {
                 "url": row.uri,
                 "max_duration_seconds": row.max_duration_seconds,
-                "total_data": row.total_data
+                "total_data": row.total_data,
+                "first_request_time": row.first_request_time.isoformat() if row.first_request_time else None
             } for row in results
         ]
         return {"results": duration_data}
     except SQLAlchemyError as e:
         print(f"Error en get_duration_by_site: {e}")
         return {"error": "Error en la BD al consultar la duración de conexiones."}
+
+# --- INICIO DE LA MODIFICACIÓN: Nueva función para obtener datos para el gráfico ---
+def get_connection_events_for_sites(db: Session, start_str: str, end_str: str, username: str, sites: List[str]) -> Dict[str, Any]:
+    """
+    Obtiene todos los eventos de conexión individuales (sin agregar) para una lista
+    de sitios específicos. Estos datos se usarán para construir el nuevo gráfico.
+    """
+    if not sites:
+        return {"events": []}
+    try:
+        start_date = datetime.strptime(start_str, '%Y-%m-%d').replace(hour=0, minute=0, second=0)
+        end_date = datetime.strptime(end_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+    except ValueError:
+        return {"error": "Formato de fecha inválido."}
+
+    try:
+        results = db.query(
+            ActiveConnectionSnapshot.uri,
+            ActiveConnectionSnapshot.snapshot_time,
+            ActiveConnectionSnapshot.elapsed_seconds,
+            ActiveConnectionSnapshot.data_transmitted
+        ).filter(
+            ActiveConnectionSnapshot.username == username,
+            ActiveConnectionSnapshot.snapshot_time.between(start_date, end_date),
+            ActiveConnectionSnapshot.uri.in_(sites)  # Filtra solo por los sitios seleccionados
+        ).order_by(
+            ActiveConnectionSnapshot.snapshot_time.asc()
+        ).all()
+
+        connection_events = [
+            {
+                "url": row.uri,
+                "snapshot_time": row.snapshot_time.isoformat(),
+                "duration_seconds": row.elapsed_seconds,
+                "data_transmitted": row.data_transmitted
+            } for row in results if row.elapsed_seconds is not None and row.data_transmitted is not None
+        ]
+        return {"events": connection_events}
+    except SQLAlchemyError as e:
+        print(f"Error en get_connection_events_for_sites: {e}")
+        return {"error": "Error en la BD al consultar los eventos de conexión."}
 # --- FIN DE LA MODIFICACIÓN ---
 
 def get_all_usernames(db: Session) -> List[str]:
