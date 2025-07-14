@@ -66,6 +66,22 @@ class LogMetadata(Base):
     last_position = Column(BigInteger, default=0)
     last_inode = Column(BigInteger, default=0)
 
+# --- INICIO DE LA MODIFICACIÓN ---
+class ActiveConnectionSnapshot(Base):
+    """
+    Almacena instantáneas de las conexiones activas obtenidas de 'mgr:client_list'.
+    Esta tabla no es dinámica por fecha.
+    """
+    __tablename__ = "active_connection_snapshots"
+    id = Column(Integer, primary_key=True)
+    snapshot_time = Column(DateTime, default=datetime.now, index=True)
+    username = Column(String(255), nullable=False, index=True)
+    client_ip = Column(String(15))
+    uri = Column(Text)
+    elapsed_seconds = Column(Float)
+    data_transmitted = Column(BigInteger)
+# --- FIN DE LA MODIFICACIÓN ---
+
 def get_database_url() -> str:
     db_type = os.getenv("DATABASE_TYPE", "SQLITE").upper()
     conn_str = os.getenv("DATABASE_STRING_CONNECTION", "squidstats.db")
@@ -92,7 +108,6 @@ def get_session():
     global _Session
     engine = get_engine()
     if _Session is None:
-        # --- MODIFICADO: Ahora llama a la función sin argumentos para que cree las tablas del día actual al iniciar. ---
         create_dynamic_tables(engine)
         _Session = sessionmaker(bind=engine)
     return _Session()
@@ -106,17 +121,18 @@ def get_metrics_table_name(date_suffix: str = None) -> str:
         date_suffix = get_table_suffix()
     return f"metrics_{date_suffix}"
 
-# --- MODIFICADO: La función ahora acepta un sufijo de fecha para crear tablas para días específicos. ---
 def create_dynamic_tables(engine, date_suffix: str = None):
+    # --- INICIO DE LA MODIFICACIÓN ---
+    # Creación de tablas estáticas (que no cambian por fecha)
     LogMetadata.__table__.create(engine, checkfirst=True)
+    ActiveConnectionSnapshot.__table__.create(engine, checkfirst=True)
+    # --- FIN DE LA MODIFICACIÓN ---
     
-    # Si no se provee un sufijo, se usan las tablas del día actual.
     user_table_name, log_table_name = get_dynamic_table_names(date_suffix)
     metrics_table_name = get_metrics_table_name(date_suffix)
     
-    # Se genera un logger específico para la fecha, para evitar mensajes duplicados.
     creation_logger = logging.getLogger(f"TableCreation_{date_suffix or 'today'}")
-    creation_logger.propagate = False # Evita que el log suba al logger raíz
+    creation_logger.propagate = False
     if not creation_logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -170,7 +186,6 @@ def get_dynamic_metrics_model(date_suffix: str):
     metrics_table_name = get_metrics_table_name(date_suffix)
 
     if not table_exists(engine, metrics_table_name):
-        # --- MODIFICADO: Si la tabla no existe para el sufijo dado, se llama a create_dynamic_tables con ese sufijo. ---
         logger.warning(f"La tabla de métricas '{metrics_table_name}' no existe. Intentando recrearla...")
         create_dynamic_tables(engine, date_suffix=date_suffix)
         if not table_exists(engine, metrics_table_name):
@@ -201,7 +216,6 @@ def get_dynamic_models(date_suffix: str):
     user_table_name, log_table_name = get_dynamic_table_names(date_suffix)
     
     if not table_exists(engine, user_table_name) or not table_exists(engine, log_table_name):
-        # --- AÑADIDO: Lógica de auto-reparación también para las tablas de logs y usuarios. ---
         logger.warning(f"Las tablas de usuario/log para el sufijo '{date_suffix}' no existen. Intentando recrearlas...")
         create_dynamic_tables(engine, date_suffix=date_suffix)
         if not table_exists(engine, user_table_name) or not table_exists(engine, log_table_name):

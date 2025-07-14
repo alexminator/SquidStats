@@ -8,10 +8,10 @@ from flask_socketio import SocketIO, emit
 from flask_apscheduler import APScheduler
 
 # ------------------- UTILIDADES Y SERVICIOS PERSONALIZADOS -------------------
-# --- MODIFICADO: Importar get_dynamic_metrics_model ---
 from database.database import (
     create_dynamic_tables, get_engine, get_session, 
-    get_dynamic_models, get_dynamic_metrics_model
+    get_dynamic_models, get_dynamic_metrics_model,
+    ActiveConnectionSnapshot # <--- Importar nuevo modelo
 )
 from parsers.connections import parse_raw_data, group_by_user
 from services.fetch_data import fetch_squid_data
@@ -26,8 +26,8 @@ from services.get_reports import get_important_metrics, get_metrics_by_date_rang
 from utils.colors import color_map
 from utils.updateSquid import update_squid
 from utils.updateSquidStats import updateSquidStats
+
 # --- INICIO DE LA MODIFICACIÓN ---
-# Se importa la nueva función de auditoría.
 from services.auditoria_service import (
     get_all_usernames,
     get_user_activity_summary,
@@ -37,13 +37,15 @@ from services.auditoria_service import (
     find_by_ip,
     find_by_response_code,
     find_social_media_activity,
-    get_daily_activity # <--- NUEVA IMPORTACIÓN
+    get_daily_activity,
+    get_duration_by_site # <--- NUEVA IMPORTACIÓN
 )
 # --- FIN DE LA MODIFICACIÓN ---
+
 from flask import jsonify
 # ------------------- PAQUETES ESTÁNDAR -------------------
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import socket
 import sys
 import os
@@ -60,26 +62,14 @@ load_dotenv()
 
 # --- Función de utilidad para convertir tamaños a bytes ---
 def size_to_bytes(size_str):
-    """Convierte un string como '2.5 GB' a bytes."""
-    if not isinstance(size_str, str):
-        return 0
-    
+    if not isinstance(size_str, str): return 0
     size_str = size_str.strip().upper()
-    
     try:
-        if 'G' in size_str:
-            value = float(size_str.replace('GB', '').strip())
-            return int(value * 1024**3)
-        if 'M' in size_str:
-            value = float(size_str.replace('MB', '').strip())
-            return int(value * 1024**2)
-        if 'K' in size_str:
-            value = float(size_str.replace('KB', '').strip())
-            return int(value * 1024)
-        
+        if 'G' in size_str: return int(float(size_str.replace('GB', '').strip()) * 1024**3)
+        if 'M' in size_str: return int(float(size_str.replace('MB', '').strip()) * 1024**2)
+        if 'K' in size_str: return int(float(size_str.replace('KB', '').strip()) * 1024)
         return int(float(size_str.replace('B', '').strip()))
-    except (ValueError, TypeError):
-        return 0
+    except (ValueError, TypeError): return 0
 
 
 # ------------------- INICIALIZACIÓN APP -------------------
@@ -97,10 +87,7 @@ scheduler.init_app(app)
 scheduler.start()
 
 # ------------------- LOGGING -------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # ======================================================================
@@ -111,16 +98,14 @@ realtime_cache_stats = {}
 realtime_system_info = {}
 parent_proxy_lock = Lock()
 
-# Detección del proxy padre una sola vez al iniciar
 log_file_path = os.getenv("SQUID_LOG", "/var/log/squid/access.log")
 logger.info("Realizando detección inicial del proxy padre...")
 g_parent_proxy_ip = find_last_parent_proxy(log_file_path)
 if g_parent_proxy_ip:
-    logger.info(f"Proxy padre detectado con IP: {g_parent_proxy_ip}. Esta configuración se mantendrá fija.")
+    logger.info(f"Proxy padre detectado con IP: {g_parent_proxy_ip}.")
 else:
-    logger.info("No se detectó un proxy padre en los logs recientes. Asumiendo conexión directa.")
+    logger.info("No se detectó un proxy padre. Asumiendo conexión directa.")
 
-# Se llama una vez para asegurar que las tablas del día se creen al arrancar
 with app.app_context():
     create_dynamic_tables(get_engine())
 
@@ -129,16 +114,16 @@ with app.app_context():
 # ======================================================================
 def realtime_data_thread():
     """
-    MODIFICADO: Ahora, además de emitir por WebSocket, este hilo guarda
-    las métricas en la base de datos cada 5 segundos.
+    Este hilo actualiza métricas del sistema y ahora también guarda
+    instantáneas de las conexiones activas para análisis de duración.
     """
     global realtime_cache_stats, realtime_system_info
-    
     last_net_counters = psutil.net_io_counters()
     last_check_time = time.time()
 
     while True:
         try:
+            # --- Métricas del sistema y caché (lógica existente) ---
             cache_data = fetch_squid_cache_stats()
             cache_stats = vars(cache_data) if hasattr(cache_data, '__dict__') else cache_data
             
@@ -157,63 +142,57 @@ def realtime_data_thread():
             last_check_time = current_time
 
             utc_now = datetime.now(timezone.utc)
-            system_info = {
-                'hostname': socket.gethostname(),
-                'ips': get_network_info(),
-                'os': get_os_info(),
-                'uptime': get_uptime(),
-                'ram': get_ram_info(),
-                'swap': get_swap_info(),
-                'cpu': get_cpu_info(),
-                'python_version': sys.version.split()[0],
-                'squid_version': get_squid_version(),
-                'timezone': get_timezone(),
-                'local_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'timestamp_utc': utc_now.isoformat()
-            }
+            system_info = {'hostname': socket.gethostname(), 'ips': get_network_info(), 'os': get_os_info(), 'uptime': get_uptime(), 'ram': get_ram_info(), 'swap': get_swap_info(), 'cpu': get_cpu_info(), 'python_version': sys.version.split()[0], 'squid_version': get_squid_version(), 'timezone': get_timezone(), 'local_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'timestamp_utc': utc_now.isoformat()}
 
-            # --- Guardar métricas en la Base de Datos ---
+            db_session = get_session()
             try:
+                # Guardar métricas del sistema
                 date_suffix = datetime.now().strftime('%Y%m%d')
                 MetricsModel = get_dynamic_metrics_model(date_suffix)
-                
                 if MetricsModel:
-                    db_session = get_session()
-                    
-                    # --- Se guarda el timestamp en UTC para consistencia. ---
-                    # Usar UTC en la base de datos evita problemas de zona horaria.
-                    new_metric = MetricsModel(
-                        timestamp=utc_now,
-                        cpu_usage=float(system_info['cpu']['usage'].replace('%','')),
-                        ram_usage_bytes=size_to_bytes(system_info['ram']['used']),
-                        swap_usage_bytes=size_to_bytes(system_info['swap']['used']),
-                        net_sent_bytes_sec=int(bytes_sent_sec),
-                        net_recv_bytes_sec=int(bytes_recv_sec)
-                    )
-                    
+                    new_metric = MetricsModel(timestamp=utc_now, cpu_usage=float(system_info['cpu']['usage'].replace('%','')), ram_usage_bytes=size_to_bytes(system_info['ram']['used']), swap_usage_bytes=size_to_bytes(system_info['swap']['used']), net_sent_bytes_sec=int(bytes_sent_sec), net_recv_bytes_sec=int(bytes_recv_sec))
                     db_session.add(new_metric)
-                    db_session.commit()
-                    db_session.close()
+
+                # --- INICIO DE LA MODIFICACIÓN ---
+                # Guardar instantáneas de conexiones activas para análisis de duración
+                raw_connections_data = fetch_squid_data()
+                if 'Error' not in raw_connections_data:
+                    active_connections = parse_raw_data(raw_connections_data)
+                    snapshots_to_insert = []
+                    for conn in active_connections:
+                        if conn.get('username') and conn['username'] not in ('-', 'N/A') and conn.get('elapsed_time', '0') != '0':
+                            snapshots_to_insert.append(
+                                ActiveConnectionSnapshot(
+                                    snapshot_time=datetime.now(),
+                                    username=conn['username'],
+                                    client_ip=conn.get('client_ip'),
+                                    uri=conn.get('uri'),
+                                    elapsed_seconds=float(conn.get('elapsed_time', 0)),
+                                    data_transmitted=conn.get('fd_total', 0)
+                                )
+                            )
+                    if snapshots_to_insert:
+                        db_session.bulk_save_objects(snapshots_to_insert)
+                # --- FIN DE LA MODIFICACIÓN ---
+                
+                db_session.commit()
             except Exception as e:
-                logger.error(f"Error al guardar métricas en la BD: {str(e)}")
+                logger.error(f"Error guardando datos en la BD: {e}")
+                db_session.rollback()
+            finally:
+                db_session.close()
 
             with realtime_data_lock:
                 realtime_cache_stats = cache_stats
                 realtime_system_info = system_info
             
-            socketio.emit('system_update', {
-                'cache_stats': cache_stats,
-                'system_info': system_info,
-                'network_stats': {
-                    'up_mbps': round((bytes_sent_sec * 8) / 1_000_000, 2),
-                    'down_mbps': round((bytes_recv_sec * 8) / 1_000_000, 2)
-                }
-            })
+            socketio.emit('system_update', {'cache_stats': cache_stats, 'system_info': system_info, 'network_stats': {'up_mbps': round((bytes_sent_sec * 8) / 1_000_000, 2), 'down_mbps': round((bytes_recv_sec * 8) / 1_000_000, 2)}})
             
         except Exception as e:
             logger.error(f"Error en hilo de datos en tiempo real: {str(e)}")
         
-        eventlet.sleep(5)
+        # Intervalo de actualización aumentado para no saturar la BD de snapshots
+        eventlet.sleep(30)
 
 # ======================================================================
 # Manejador de conexión WebSocket
@@ -221,16 +200,11 @@ def realtime_data_thread():
 @socketio.on('connect')
 def handle_connect():
     logger.info(f"Cliente conectado: {request.sid}")
-    
     with realtime_data_lock:
         cache_stats = realtime_cache_stats
         system_info = realtime_system_info
-
     if cache_stats or system_info:
-        socketio.emit('system_update', {
-            'cache_stats': cache_stats,
-            'system_info': system_info
-        }, to=request.sid)
+        socketio.emit('system_update', {'cache_stats': cache_stats, 'system_info': system_info}, to=request.sid)
 
 # ------------------- NO CACHÉ PARA RESPUESTAS -------------------
 @app.after_request
@@ -502,13 +476,13 @@ def api_run_audit():
             result = get_user_activity_summary(db, username, start_date, end_date)
         elif audit_type == 'top_users_data':
             result = get_top_users_by_data(db, start_date, end_date)
-        # --- INICIO DE LA MODIFICACIÓN ---
         elif audit_type == 'daily_activity':
-            if not start_date: return jsonify({"error": "Se requiere una fecha de inicio."}), 400
+            if not username: return jsonify({"error": "Se requiere un nombre de usuario."}), 400
+            if not start_date: return jsonify({"error": "Se requiere una fecha."}), 400
             result = get_daily_activity(db, start_date, username)
-        # --- FIN DE LA MODIFICACIÓN ---
-        elif audit_type == 'denied_access':
-            result = find_denied_access(db, start_date, end_date, username)
+        elif audit_type == 'duration_by_site':
+            if not username: return jsonify({"error": "Se requiere un nombre de usuario."}), 400
+            result = get_duration_by_site(db, start_date, end_date, username)
         elif audit_type == 'keyword_search':
             if not keyword: return jsonify({"error": "Se requiere una palabra clave."}), 400
             result = find_by_keyword(db, start_date, end_date, keyword, username)
@@ -527,7 +501,6 @@ def api_run_audit():
         return jsonify(result)
 
     except Exception as e:
-        # Imprimir el error en el log del servidor para depuración
         print(f"Error en la API de auditoría: {e}")
         return jsonify({"error": "Ocurrió un error interno en el servidor."}), 500
     finally:
@@ -625,10 +598,7 @@ def logs_fragment():
         if db:
             db.close()
 
-from flask import Blueprint, render_template, request
-from datetime import date
-from services.fetch_data_logs import get_metrics_for_date
-
+from flask import Blueprint
 reports_bp = Blueprint('reports', __name__)
 
 @reports_bp.route('/dashboard')
